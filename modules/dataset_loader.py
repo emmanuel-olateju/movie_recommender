@@ -13,7 +13,7 @@ class MovieLensDataset:
         with open(CSV_DIR, "r", encoding="utf-8") as file:
             next(file)
 
-            for line in tqdm.tqdm(file, total=32000204):
+            for line in tqdm(file, total=32000204):
                 line = line.strip(" ")
                 values = line.split(",")
                 # print(values)
