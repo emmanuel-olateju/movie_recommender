@@ -106,6 +106,8 @@ class MovieLensDataset:
                 train_idxs.append(idx)
             else:
                 test_idxs.append(idx)
+        train_idxs = np.array(train_idxs)
+        test_idxs = np.array(test_idxs)
         return train_idxs, test_idxs
 
 class Split:
