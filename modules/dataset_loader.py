@@ -1,5 +1,6 @@
 from tqdm import tqdm
 import random
+import numpy as np
 
 class MovieLensDataset:
     def __init__(self, CSV_DIR: str, MOVIES_DIR: str=None, ) -> None:
@@ -7,8 +8,9 @@ class MovieLensDataset:
         self.users_map = dict()
         self.movies_map = dict()
 
-        self.user_ratings = []
-        self.movie_ratings = []
+        self.users = []
+        self.movies = []
+        self.ratings = []
 
 
         with open(CSV_DIR, "r", encoding="utf-8") as file:
@@ -24,21 +26,23 @@ class MovieLensDataset:
 
                 if user not in self.users_map:
                     self.users_map[user] = len(self.users_map)
-                    self.user_ratings.append([])
                 if movie not in self.movies_map:
                     self.movies_map[movie] = len(self.movies_map)
-                    self.movie_ratings.append([])
 
-                self.user_ratings[self.users_map[user]].append((rating, self.movies_map[movie]))
-                self.movie_ratings[self.movies_map[movie]].append((rating, self.users_map[user]))
+                self.users.append(self.users_map[user])
+                self.movies.append(self.movies_map[movie])
+                self.ratings.append(rating)
 
 
             self.users_reverse_map = {value: key for key, value in self.users_map.items()}
             self.movies_reverse_map = {value: key for key, value in self.movies_map.items()}
 
+        self.users = np.array(self.users)
+        self.movies = np.array(self.movies)
+        self.ratings = np.array(self.ratings)
+
         self.__n_users = len(self.users_map)
         self.__n_movies = len(self.movies_map)
-
         self.shape = (self.__n_users, self.__n_movies)
 
         if MOVIES_DIR is not None:
@@ -90,36 +94,27 @@ class MovieLensDataset:
         assert (split_ratio >= 0.0) and (split_ratio <= 1.0)
      
         # Initialize all four lists based on the size of users/movies
-        user_train = [[] for _ in range(len(self.users_map))]
-        user_test = [[] for _ in range(len(self.users_map))]
-        movie_train = [[] for _ in range(len(self.movies_map))]
-        movie_test = [[] for _ in range(len(self.movies_map))]
+        user_train = []
+        user_test = []
+        movie_train = []
+        movie_test = []
+        rating_train = []
+        rating_test = []
 
         # Iterate over users
         for user_key, user_idx in self.users_map.items():
-            # Iterate over all ratings for this user
-            for rating, movie_idx in self.user_ratings[user_idx]:
-
-                # --- Perform the split DECISION ONCE ---
+            user_idxs = np.where(self.users==user_idx)[0]
+            for idx in user_idxs:
                 if random.uniform(0.0, 1.0) < split_ratio:
-                    # TRAIN SET
-
-                    # 1. Update user-centric train list
-                    user_train[user_idx].append((rating, movie_idx))
-
-                    # 2. Update movie-centric train list
-                    # Note: movie_ratings usually stores (rating, user_idx)
-                    movie_train[movie_idx].append((rating, user_idx))
+                    user_train.append(self.users[idx])
+                    movie_train.append(self.movies[idx])
+                    rating_train.append(self.ratings[idx])
                 else:
-                    # TEST SET
+                    user_test.append(self.users[idx])
+                    movie_test.append(self.movies[idx])
+                    rating_test.append(self.ratings[idx])
 
-                    # 1. Update user-centric test list
-                    user_test[user_idx].append((rating, movie_idx))
-
-                    # 2. Update movie-centric test list
-                    movie_test[movie_idx].append((rating, user_idx))
-
-        return user_train, user_test, movie_train, movie_test
+        return user_train, user_test, movie_train, movie_test, rating_train, rating_test
 
 class Split:
 
