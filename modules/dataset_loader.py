@@ -110,6 +110,9 @@ class MovieLensDataset:
         test_idxs = np.array(test_idxs)
         return train_idxs, test_idxs
 
+    def user_movie_counts(self):
+        return self.__n_users, self.__n_movies
+
 class Split:
 
     def __init__(ds, map, reverse_map):
