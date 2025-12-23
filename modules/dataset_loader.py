@@ -102,7 +102,7 @@ class MovieLensDataset:
         rating_test = []
 
         # Iterate over users
-        for user_key, user_idx in self.users_map.items():
+        for user_key, user_idx in tqdm(self.users_map.items(), total=self.__n_users):
             user_idxs = np.where(self.users==user_idx)[0]
             for idx in user_idxs:
                 if random.uniform(0.0, 1.0) < split_ratio:
