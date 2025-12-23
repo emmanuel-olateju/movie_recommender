@@ -24,6 +24,9 @@ class MovieLensDataset:
                 movie = int(values[1])
                 rating = float(values[2])
 
+                if int(rating) == 0:
+                    continue
+
                 if user not in self.users_map:
                     self.users_map[user] = len(self.users_map)
                 if movie not in self.movies_map:
@@ -36,13 +39,14 @@ class MovieLensDataset:
 
             self.users_reverse_map = {value: key for key, value in self.users_map.items()}
             self.movies_reverse_map = {value: key for key, value in self.movies_map.items()}
-
+        
         self.users = np.array(self.users)
         self.movies = np.array(self.movies)
         self.ratings = np.array(self.ratings)
 
         self.__n_users = len(self.users_map)
         self.__n_movies = len(self.movies_map)
+        self.__n_entries = len(self.users)
         self.shape = (self.__n_users, self.__n_movies)
 
         if MOVIES_DIR is not None:
@@ -73,7 +77,6 @@ class MovieLensDataset:
                     title_idx = len(self.movie_features_map)
                     self.movie_features_reverse_map[title] = title_idx
                     self.movie_features_reverse_map[title_idx] = title
-                
 
                 movie_idx = self.movies_map[movie]
                 if movie_idx not in self.movie_features_idx:
@@ -94,27 +97,16 @@ class MovieLensDataset:
         assert (split_ratio >= 0.0) and (split_ratio <= 1.0)
      
         # Initialize all four lists based on the size of users/movies
-        user_train = []
-        user_test = []
-        movie_train = []
-        movie_test = []
-        rating_train = []
-        rating_test = []
+        train_idxs = []
+        test_idxs = []
 
         # Iterate over users
-        for user_key, user_idx in tqdm(self.users_map.items(), total=self.__n_users):
-            user_idxs = np.where(self.users==user_idx)[0]
-            for idx in user_idxs:
-                if random.uniform(0.0, 1.0) < split_ratio:
-                    user_train.append(self.users[idx])
-                    movie_train.append(self.movies[idx])
-                    rating_train.append(self.ratings[idx])
-                else:
-                    user_test.append(self.users[idx])
-                    movie_test.append(self.movies[idx])
-                    rating_test.append(self.ratings[idx])
-
-        return user_train, user_test, movie_train, movie_test, rating_train, rating_test
+        for idx in tqdm(range(self.__n_entries), total=self.__n_entries):
+            if random.uniform(0.0, 1.0) < split_ratio:
+                train_idxs.append(idx)
+            else:
+                test_idxs.append(idx)
+        return train_idxs, test_idxs
 
 class Split:
 
