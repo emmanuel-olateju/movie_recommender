@@ -340,7 +340,7 @@ class MovieLensDataset_Optimized:
         return history
 
     def load_model(self, model_dir):
-        hyper_params = np.loadz(model_dir)
+        hyper_params = np.load(model_dir)
 
         self.U = hyper_params['U']
         self.V = hyper_params['V']
