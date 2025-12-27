@@ -218,6 +218,10 @@ class MovieLensDataset_Optimized:
 
 
     def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, verbose=True):
+        self.lambda_ = lambda_
+        self.tau = tau
+        self.gamma = gamma
+
         self.train_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
         M, N  =self.user_movie_counts()
 
