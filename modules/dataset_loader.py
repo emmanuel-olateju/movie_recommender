@@ -1,6 +1,7 @@
 from tqdm import tqdm
 import random
 import numpy as np
+import gc
 
 class MovieLensDataset_Base:
     def __init__(self, CSV_DIR: str, MOVIES_DIR: str=None, ) -> None:
@@ -175,29 +176,124 @@ class MovieLensDataset_Optimized:
     def compute_loss(self, mode="train"):
         pass
 
-    def train(self, test_size=0.1, latent_dim=10, n_iter=50, lambda_=1, tau=1, gamma=1):
-       self.train_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
-       M, N  =self.user_movie_counts()
+    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, verbose=True):
+        self.train_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
+        M, N  =self.user_movie_counts()
 
-       self.K = K = latent_dim
-       self.U = np.random.randn(M, K)
-       self.V = np.random.randn(N, K)
-       self.BM = np.random.randn(M)
-       self.BN = np.random.randn(N)
-       self.mu = np.mean(self.ratings[self.train_idx])
-       
-       train_loss_history = []
-       train_rmse_history = []
-       test_loss_history = []
-       test_rmse_history = []
-       train_loss, train_rmse = self.compute_loss()
-       test_loss, test_rmse = self.compute_loss(mode="test")
+        self.K = K = latent_dim
+        self.U = np.random.randn(M, K)
+        self.V = np.random.randn(N, K)
+        self.BM = np.random.randn(M)
+        self.BN = np.random.randn(N)
+        self.mu = np.mean(self.ratings[self.train_idx])
+        
+        train_loss_history = []
+        train_rmse_history = []
+        test_loss_history = []
+        test_rmse_history = []
+        train_loss, train_rmse = self.compute_loss(mode="train")
+        test_loss, test_rmse = self.compute_loss(mode="test")
+        start_train_loss = train_loss
+        start_test_loss = test_loss
 
-       # Only work with TRAIN indices
-       train_users = self.users[self.train_idx]
-       train_movies = self.movies[self.train_idx]
-       train_ratings = self.ratings[self.train_idx]
+        # Only work with TRAIN indices
+        train_users = self.users[self.train_idx]
+        train_movies = self.movies[self.train_idx]
+        train_ratings = self.ratings[self.train_idx]
+        print(f"Trainb data sizeL {len(train_users):, } ratings")
 
+        # Pre-build lookups ONLY for train data
+        print("Building lookup tables ...")
+        user_to_indices = [[] for _ in range(M)] 
+        movie_to_indices = [[] for _ in range(N)]
+
+        for idx in tqdm(range(len(train_users)), desc="Building lookups"):
+            user_to_indices[train_users[idx]].append(idx)
+            movie_to_indices[train_movies[idx]].append(idx)
+
+        # Convert to nbmpy arrays
+        user_to_indices = [np.array(v, dtype=np.int32) if len(v) > 0 else np.array([], dtype=np.int32)
+                           for v in user_to_indices]
+        movie_to_indices = [np.array(v, dtype=np.int32) if len(v) > 0  else np.array([], dtype=np.int32)
+                            for v in movie_to_indices]
+        print("Lookup tables built")
+        gc.collect()
+
+        for epoch in tqdm(range(n_iter), total=n_iter):
+
+            # Update users latent factor - NO detrended_ratings array!
+            for m in range(M):
+                indices = user_to_indices[m]
+                if len(indices) == 0:
+                    continue
+
+                movies_rated_by_m = train_movies[indices]
+                ratings_by_m = train_ratings[indices]
+
+                # Detrend on-the-fly (no large array creation)
+                detrended = ratings_by_m - self.mu - self.BM[m] - self.BN[movies_rated_by_m]
+
+                V_rated = self.V[movies_rated_by_m]
+                numerator = lambda_ * np.sum(V_rated * detrended[:, np.newaxis], axis=0)
+                denominator = lambda_ * (V_rated.T @ V_rated) + (tau * np.eye(K))
+                self.U[m] = np.linalg.solve(denominator, numerator)
+
+            # Update movies latent factor
+            for n in range(N):
+                indices = movie_to_indices[n]
+                if len(indices) == 0:
+                    continue
+
+                users_rating_movie = train_users[indices]
+                ratings_for_n = train_ratings[indices]
+
+                # Detrend on-the-fly
+                detrended = ratings_for_n - self.mu - self.BM[users_rating_movie] - self.BN[n]
+
+                U_rated = self.U[users_rating_movie]
+                numerator = lambda_ * np.sum(U_rated * detrended[:, np.newaxis], axis=0)
+                denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
+                self.V[n] = np.linalg.solve(denominator, numerator)
+
+            # Bias updates - compute predictions on-the-fly
+            # User biases
+            predictions = self.mu + np.sum(self.U[train_users] * self.V[train_movies], axis=1) + self.BN[train_movies]
+            residuals = train_ratings - predictions
+            per_user_residual_sum = np.bincount(train_users, weights=lambda_*residuals, minlength=M)
+            per_user_count = np.bincount(train_users, minlength=M)
+            mask = per_user_count > 0
+            self.BM[mask] = per_user_residual_sum[mask] / (lambda_ * per_user_count[mask] + gamma)
+
+            # Movie biases (recompute predictions with updated BM)
+            predictions = self.mu + np.sum(self.U[train_users] * self.V[train_movies], axis=1) + self.BM[train_users]
+            residuals = train_ratings - predictions
+            per_movie_residual_sum = np.bincount(train_movies, weights=lambda_*residuals, minlength=N)
+            per_movie_count = np.bincount(train_movies, minlength=N)
+            mask = per_movie_count > 0
+            self.BN[mask] = per_movie_residual_sum[mask] / (lambda_ * per_movie_count[mask] + gamma)
+
+            # Evaluate
+            train_loss, train_rmse = self.compute_loss(mode="train")
+            train_loss_history.append(train_loss)
+            train_rmse_history.append(train_rmse)
+
+            test_loss, test_rmse = self.compute_loss(mode="test")
+            test_loss_history.append(test_loss)
+            test_rmse_history.append(test_rmse)
+
+            if (epoch % eval_inter == 0) and (verbose):
+                print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {test_loss:.4f}, RMSE: {test_rmse:.4f}")
+
+        history = {
+            "NLL": {"train": train_loss_history, "test": test_loss_history},
+            "RMSE": {"train": train_rmse_history, "test": test_rmse_history}
+        }
+        
+        if verbose:
+            print(f"\nEND: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.6f} | Test Loss = {test_loss:.4f}, RMSE: {test_rmse:.6f}")
+            print(f"Loss Reduction: Train {start_train_loss - train_loss:.4f}, Test {start_test_loss - test_loss:.4f}")
+
+        return history
 
     def __getitem__(self, index):
         if isinstance(index, int):
