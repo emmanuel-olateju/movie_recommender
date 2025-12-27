@@ -245,7 +245,6 @@ class MovieLensDataset_Optimized:
         train_users = self.users[self.train_idx]
         train_movies = self.movies[self.train_idx]
         train_ratings = self.ratings[self.train_idx]
-        print(f"Trainb data sizeL {len(train_users):, } ratings")
 
         # Pre-build lookups ONLY for train data
         print("Building lookup tables ...")
