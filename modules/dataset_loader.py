@@ -172,6 +172,33 @@ class MovieLensDataset_Optimized:
         if MOVIES_DIR is not None:
             self.__make_movie_features(MOVIES_DIR)
 
+    def compute_loss(self, mode="train"):
+        pass
+
+    def train(self, test_size=0.1, latent_dim=10, n_iter=50, lambda_=1, tau=1, gamma=1):
+       self.train_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
+       M, N  =self.user_movie_counts()
+
+       self.K = K = latent_dim
+       self.U = np.random.randn(M, K)
+       self.V = np.random.randn(N, K)
+       self.BM = np.random.randn(M)
+       self.BN = np.random.randn(N)
+       self.mu = np.mean(self.ratings[self.train_idx])
+       
+       train_loss_history = []
+       train_rmse_history = []
+       test_loss_history = []
+       test_rmse_history = []
+       train_loss, train_rmse = self.compute_loss()
+       test_loss, test_rmse = self.compute_loss(mode="test")
+
+       # Only work with TRAIN indices
+       train_users = self.users[self.train_idx]
+       train_movies = self.movies[self.train_idx]
+       train_ratings = self.ratings[self.train_idx]
+
+
     def __getitem__(self, index):
         if isinstance(index, int):
             pass
