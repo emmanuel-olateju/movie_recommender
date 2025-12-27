@@ -339,6 +339,21 @@ class MovieLensDataset_Optimized:
 
         return history
 
+    def load_model(self, model_dir):
+        hyper_params = np.loadz(model_dir)
+
+        self.U = hyper_params['U']
+        self.V = hyper_params['V']
+        self.K = self.U.shape[-1]
+        
+        self.BM = hyper_params['BM']
+        self.BN = hyper_params['BN']
+
+        self.mu = hyper_params['mu']
+        self.lambda_ = hyper_params['lambda_']
+        self.gamma = hyper_params['gamma']
+        self.tau = hyper_params['tau']
+
     def __getitem__(self, index):
         if isinstance(index, int):
             pass
