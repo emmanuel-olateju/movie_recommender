@@ -174,7 +174,48 @@ class MovieLensDataset_Optimized:
             self.__make_movie_features(MOVIES_DIR)
 
     def compute_loss(self, mode="train"):
-        pass
+        M, N = self.user_movie_counts()
+
+        rating_errors = []
+        total_ratings = 0.0
+
+        if mode == 'train':
+            users_idx = self.users[self.train_idx]
+            movies_idx = self.movies[self.train_idx]
+            ratings = self.ratings[self.train_idx]
+        else:
+            users_idx = self.users[self.test_idx]
+            movies_idx = self.movies[self.test_idx]
+            ratings = self.ratings[self.test_idx]
+
+        pred_m_rated = self.mu + np.sum(self.V[movies_idx] * self.U[users_idx], axis=1) + self.BM[users_idx] + self.BN[movies_idx]
+        rating_errors = (ratings - pred_m_rated) ** 2
+        total_ratings = len(rating_errors)
+
+        if total_ratings == 0:
+            return 0.0, 0.0
+
+        rating_error = np.sum(rating_errors)
+
+        # RMSE is always just the data fit
+        rmse = np.sqrt(rating_error / total_ratings) if total_ratings > 0 else 0.0
+
+        # Loss differs by mode
+        if mode == "train":
+            users_norm = np.sum(self.U ** 2)
+            movies_norm = np.sum(self.V ** 2)
+            users_bias_squared = np.sum(self.BM ** 2)
+            movies_bias_squared = np.sum(self.BN ** 2)
+
+            loss = (self.lambda_ / 2) * rating_error + \
+                    (self.gamma / 2) * (users_bias_squared + movies_bias_squared) + \
+                    (self.tau / 2) * (users_norm + movies_norm)
+        else:
+            # Test loss: only data fit (no regularization)
+            loss = (self.lambda_ / 2) * rating_error  # or even just rating_error
+
+        return loss, rmse
+
 
     def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, verbose=True):
         self.train_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
