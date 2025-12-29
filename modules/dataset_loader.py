@@ -689,7 +689,7 @@ class MovieLensDataset_OptimizedCuPy:
         for idx in tqdm(range(self.__n_entries), total=self.__n_entries):
             if random.uniform(0.0, 1.0) < split_ratio:
                 train_idxs.append(idx)
-            elif random.uniform(0.0, 1.0) <= ((1 - split_ratio) / 2):
+            elif random.uniform(0.0, 1.0) <= (split_ratio + ((1 - split_ratio) / 2)):
                 val_idxs.append(idx)
             else:
                 test_idxs.append(idx)
