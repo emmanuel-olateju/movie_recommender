@@ -3,7 +3,7 @@ from tqdm import tqdm
 import random
 import numpy as np
 import gc
-from matplotlib.pyplot import plt
+import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 colors = {
