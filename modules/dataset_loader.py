@@ -1,7 +1,16 @@
+import os
 from tqdm import tqdm
 import random
 import numpy as np
 import gc
+from matplotlib.pyplot import plt
+from matplotlib.lines import Line2D
+
+colors = {
+    'isolated': '#2E86AB',      # Blue
+    'Optimized': '#A23B72',    # Purple
+    'batch': '#F18F01'          # Orange
+}
 
 class MovieLensDataset_Base:
     def __init__(self, CSV_DIR: str, MOVIES_DIR: str=None, ) -> None:
@@ -223,7 +232,7 @@ class MovieLensDataset_Optimized:
         return loss, rmse
 
 
-    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, verbose=True):
+    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, biases_alone=False, verbose=True):
         self.lambda_ = lambda_
         self.tau = tau
         self.gamma = gamma
@@ -271,39 +280,40 @@ class MovieLensDataset_Optimized:
 
         for epoch in tqdm(range(n_iter), total=n_iter, unit_scale=True, unit='it'):
 
-            # Update users latent factor - NO detrended_ratings array!
-            for m in range(M):
-                indices = user_to_indices[m]
-                if len(indices) == 0:
-                    continue
+            if biases_alone is False:
+                # Update users latent factor - NO detrended_ratings array!
+                for m in range(M):
+                    indices = user_to_indices[m]
+                    if len(indices) == 0:
+                        continue
 
-                movies_rated_by_m = train_movies[indices]
-                ratings_by_m = train_ratings[indices]
+                    movies_rated_by_m = train_movies[indices]
+                    ratings_by_m = train_ratings[indices]
 
-                # Detrend on-the-fly (no large array creation)
-                detrended = ratings_by_m - self.mu - self.BM[m] - self.BN[movies_rated_by_m]
+                    # Detrend on-the-fly (no large array creation)
+                    detrended = ratings_by_m - self.mu - self.BM[m] - self.BN[movies_rated_by_m]
 
-                V_rated = self.V[movies_rated_by_m]
-                numerator = lambda_ * np.sum(V_rated * detrended[:, np.newaxis], axis=0)
-                denominator = lambda_ * (V_rated.T @ V_rated) + (tau * np.eye(K))
-                self.U[m] = np.linalg.solve(denominator, numerator)
+                    V_rated = self.V[movies_rated_by_m]
+                    numerator = lambda_ * np.sum(V_rated * detrended[:, np.newaxis], axis=0)
+                    denominator = lambda_ * (V_rated.T @ V_rated) + (tau * np.eye(K))
+                    self.U[m] = np.linalg.solve(denominator, numerator)
 
-            # Update movies latent factor
-            for n in range(N):
-                indices = movie_to_indices[n]
-                if len(indices) == 0:
-                    continue
+                # Update movies latent factor
+                for n in range(N):
+                    indices = movie_to_indices[n]
+                    if len(indices) == 0:
+                        continue
 
-                users_rating_movie = train_users[indices]
-                ratings_for_n = train_ratings[indices]
+                    users_rating_movie = train_users[indices]
+                    ratings_for_n = train_ratings[indices]
 
-                # Detrend on-the-fly
-                detrended = ratings_for_n - self.mu - self.BM[users_rating_movie] - self.BN[n]
+                    # Detrend on-the-fly
+                    detrended = ratings_for_n - self.mu - self.BM[users_rating_movie] - self.BN[n]
 
-                U_rated = self.U[users_rating_movie]
-                numerator = lambda_ * np.sum(U_rated * detrended[:, np.newaxis], axis=0)
-                denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
-                self.V[n] = np.linalg.solve(denominator, numerator)
+                    U_rated = self.U[users_rating_movie]
+                    numerator = lambda_ * np.sum(U_rated * detrended[:, np.newaxis], axis=0)
+                    denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
+                    self.V[n] = np.linalg.solve(denominator, numerator)
 
             # Bias updates - compute predictions on-the-fly
             # User biases
@@ -392,3 +402,70 @@ class MovieLensDataset_Optimized:
 
     def user_movie_counts(self):
         return self.__n_users, self.__n_movies
+
+    def train_val_performance(self, train_loss, train_rmse, val_loss, val_rmse, save_dir=None, save_name='32M_bias+latentFactor_updates'):
+        fig = plt.figure(figsize=(14, 6))
+        n_epochs = len(train_loss)
+        assert n_epochs == len(train_rmse) == len(val_loss) == len(val_rmse)
+        epochs = np.arange(1, n_epochs+1)
+
+        # Train NLL
+        plt.subplot(2, 2, 1)
+        plt.plot(epochs, train_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
+        plt.scatter(epochs, train_loss, label='Train NLL', s=30, color=colors['Optimized'])
+        plt.xscale('log')
+        plt.ylabel("NLL", fontsize=11)
+        plt.xlabel("Epoch", fontsize=11)
+        plt.grid(alpha=0.3)
+        plt.title("Train NLL", fontsize=12, fontweight='bold')
+
+        # Test NLL
+        plt.subplot(2, 2, 2)
+        plt.plot(epochs, val_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
+        plt.scatter(epochs, val_loss, label='Val NLL', s=30, color=colors['Optimized'])
+        plt.xscale('log')
+        plt.xlabel("Epoch", fontsize=11)
+        plt.title("Test NLL", fontsize=12, fontweight='bold')
+        plt.grid(alpha=0.3)
+
+        # Train RMSE
+        plt.subplot(2, 2, 3)
+        plt.plot(epochs, train_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
+        plt.scatter(epochs, train_rmse, label='Train RMSE', s=30, color=colors['Optimized'])
+        plt.xscale('log')
+        plt.ylabel("RMSE", fontsize=11)
+        plt.xlabel("Epoch", fontsize=11)
+        plt.grid(alpha=0.3)
+        plt.title("Train RMSE", fontsize=12, fontweight='bold')
+
+        # Test RMSE
+        plt.subplot(2, 2, 4)
+        plt.plot(epochs, val_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
+        plt.scatter(epochs, val_rmse, label='Val RMSE', s=30, color=colors['Optimized'])
+        plt.xscale('log')
+        plt.xlabel("Epoch", fontsize=11)
+        plt.title("Test RMSE", fontsize=12, fontweight='bold')
+        plt.grid(alpha=0.3)
+
+        # Get legend from first subplot instead
+        ax1 = fig.get_axes()[0]
+        handles, labels_list = ax1.get_legend_handles_labels()
+
+        fig.suptitle("Bias + Latent-Factor Update Methods Comparison (32M Samples)", fontsize=14, fontweight='bold', y=0.98)
+        fig.legend(handles, labels_list, loc='upper center', bbox_to_anchor=(0.5, 0.93),
+                ncol=3, frameon=True, fontsize=11, edgecolor='gray')
+
+        plt.tight_layout(rect=[0, 0, 1, 0.90])  # Leave space for title and legend
+
+        if save_dir is not None:
+            os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_dir}/pngs", exist_ok=True)
+            
+            if save_name is not None:
+                fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", format="pdf", dpi=150, bbox_inches='tight')
+                fig.savefig(f"{save_dir}/pngs/{save_name}.png", format="png", dpi=150, bbox_inches='tight')
+            else:
+                raise ValueError('Name for image not specified in argument `save_name`')
+
+    def test_performance(self):
+        return self.compute_loss(mode='test')
