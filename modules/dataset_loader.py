@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from itertools import product
 
+from IPython.display import clear_output
+
 colors = {
     'isolated': '#2E86AB',      # Blue
     'Optimized': '#A23B72',    # Purple
@@ -1070,6 +1072,7 @@ class GridSearch:
             })
             
             print(f"Params: {params}, RMSE Score: {rmse:.4f}, NLL Score: {loss:.4f}")
+            clear_output()
         
         # Find best parameters
         self.best_result = max(self.results, key=lambda x: x['score'])
