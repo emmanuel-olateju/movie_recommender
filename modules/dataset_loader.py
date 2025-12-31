@@ -179,10 +179,65 @@ class MovieLensDataset_Optimized:
         self.__n_entries = len(self.users)
         self.shape = (self.__n_users, self.__n_movies)
 
-        if MOVIES_DIR is not None:
-            self.__make_movie_features(MOVIES_DIR)
+        # Initialize feature-related attributes
+        self.has_features = False
+        self.feature_map = {}
+        self.feature_reverse_map = {}
+        self.movie_to_features = {}     # movie_idx -> list of feature_idx
 
-    def compute_loss(self, mode="train"):
+        if MOVIES_DIR is not None:
+            self._load_movie_features(MOVIES_DIR)
+
+    def _load_movie_features(self, MOVIES_DIR: str):
+        print("Loading movie features...")
+
+        with open(MOVIES_DIR, encoding="utf-8") as file:
+            next(file)
+
+            for line in tqdm(file, desc="Processing movie features"):
+                line = line.strip()
+                parts = line.split(',')
+                if len(parts) < 3:
+                    continue
+
+                movie_id = int(parts[0])
+                genres_str = parts[-1]
+
+                if movie_id not in self.movies_map:
+                    continue
+
+                movie_idx = self.movies_map[movie_id]
+
+                if genres_str and genres_str != "(no genres listed)":
+                    genres = genres_str.split('|')
+
+                    feature_indices = []
+                    for genre in genres:
+                        genre = genre.strip()
+                        if genre not in self.feature_map:
+                            feature_idx = len(self.feature_map)
+                            self.feature_map[genre] = feature_idx
+                            self.feature_reverse_map[feature_idx] = genre
+                        else:
+                            feature_idx = self.feature_map[genre]
+                        
+                        feature_indices.append(feature_idx)
+                    
+                    self.movie_to_features[movie_idx] = feature_indices
+
+        self.__n_features = len(self.feature_map)
+        self.has_features = self.__n_features > 0
+
+        print(f"Loaded {self.__n_features} unique features (genres)")
+        print(f"Features mapped for {len(self.movie_to_features)}/{self.__n_movies} movies")
+
+    def _build_feature_matrix(self):
+        movie_features = [[] for _ in range(self.__n_movies)]
+        for movie_idx, feature_indices in self.movie_to_features.items():
+            movie_features[movie_idx] = feature_indices
+        return movie_features
+
+    def compute_loss(self, mode="train", use_features=False):
         M, N = self.user_movie_counts()
 
         rating_errors = []
@@ -224,28 +279,55 @@ class MovieLensDataset_Optimized:
 
             loss = (self.lambda_ / 2) * rating_error + \
                     (self.gamma / 2) * (users_bias_squared + movies_bias_squared) + \
-                    (self.tau / 2) * (users_norm + movies_norm)
+                    (self.tau / 2) * (users_norm)
+
+            if use_features and self.has_features and hasattr(self, 'W'):
+                feature_prior = self._compute_feature_prior()
+                movie_deviation = np.sum((self.V - feature_prior)**2)
+                feature_norm = np.sum(self.W**2)
+
+                loss += (self.tau / 2) * movie_deviation + (self.eta / 2) * feature_norm
+            else:
+                loss += (self.tau / 2) * movies_norm
         else:
             # Test loss: only data fit (no regularization)
             loss = (self.lambda_ / 2) * rating_error  # or even just rating_error
 
         return loss, rmse
 
+    def _compute_feature_prior(self):
+        V_prior = np.zeros_like(self.V)
 
-    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, biases_alone=False, verbose=True):
+        for movie_idx in range(self.__n_movies):
+            if movie_idx in self.movie_to_features:
+                feature_indices = self.movie_to_features[movie_idx]
+                if len(feature_indices) > 0:
+                    V_prior[movie_idx] = np.mean(self.W[feature_indices], axis=0)
+        
+        return V_prior
+
+    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, eta=1, use_features=False, biases_alone=False, verbose=True):
         self.lambda_ = lambda_
         self.tau = tau
         self.gamma = gamma
+        self.eta = eta
 
-        self.train_idx,self.val_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
+        self.train_idx,self.val_idx, self.test_idx = self.train_test_split(split_ratio = (1 - test_size)) 
         M, N  =self.user_movie_counts()
 
         self.K = K = latent_dim
-        self.U = np.random.randn(M, K)
-        self.V = np.random.randn(N, K)
-        self.BM = np.random.randn(M)
-        self.BN = np.random.randn(N)
+        self.U = np.random.randn(M, K) * 0.01
+        self.V = np.random.randn(N, K) * 0.01
+        self.BM = np.random.randn(M) * 0.01
+        self.BN = np.random.randn(N) * 0.01
         self.mu = np.mean(self.ratings[self.train_idx])
+
+        if use_features and self.has_features:
+            self.W = np.random.randn(self.__n_features, K) * 0.01
+            print(f"Using features: {self.__n_features} features with dim {K}")
+        else:
+            use_features = False
+            print("Training without features")
         
         train_loss_history = []
         train_rmse_history = []
@@ -277,6 +359,15 @@ class MovieLensDataset_Optimized:
                             for v in movie_to_indices]
         print("Lookup tables built")
         gc.collect()
+
+        if use_features:
+            movie_features = self._build_feature_matrix()
+            feature_to_movies = [[] for _ in range(self.__n_features)]
+            for movie_idx, feat_indices in enumerate(movie_features):
+                for feat_idx in feat_indices:
+                    feature_to_movies[feat_idx].append(movie_idx)
+            feature_to_movies = [np.array(v, dtype=np.int32) if len(v) > 0 else np.array([], dtype=np.int32) 
+                                for v in feature_to_movies]
 
         for epoch in tqdm(range(n_iter), total=n_iter, unit_scale=True, unit='it'):
 
@@ -312,8 +403,32 @@ class MovieLensDataset_Optimized:
 
                     U_rated = self.U[users_rating_movie]
                     numerator = lambda_ * np.sum(U_rated * detrended[:, np.newaxis], axis=0)
-                    denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
+
+                    # Add feature prioir contribution if using prior
+                    if use_features and n in self.movie_to_features:
+                        feature_indices = self.movie_to_features[n]
+                        if len(feature_indices) > 0:
+                            v_prior = np.mean(self.W[feature_indices], axis=0)
+                            numerator += tau * v_prior
+                            denominator = lambda_ * (U_rated.T @U_rated) + (2 * tau *np.eye(K))
+                        else:
+                            denominator = lambda_ * (U_rated @ U_rated) + (tau * np.eye(K))
+                    else:
+                        denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
+                    
                     self.V[n] = np.linalg.solve(denominator, numerator)
+
+                # Update feature embeddings if using features
+                if use_features:
+                    for f in range(self.__n_features):
+                        movies_with_feature = feature_to_movies[f]
+                        if len(movies_with_feature) == 0:
+                            continue
+
+                        V_subset = self.V[movies_with_feature]
+                        numerator = tau * np.sum(V_subset, axis=0)
+                        denominator = tau * len(movies_with_feature) + eta
+                        self.W[f] = numerator / denominator
 
             # Bias updates - compute predictions on-the-fly
             # User biases
@@ -333,20 +448,21 @@ class MovieLensDataset_Optimized:
             self.BN[mask] = per_movie_residual_sum[mask] / (lambda_ * per_movie_count[mask] + gamma)
 
             # Evaluate
-            train_loss, train_rmse = self.compute_loss(mode="train")
+            train_loss, train_rmse = self.compute_loss(mode="train", use_features=use_features)
             train_loss_history.append(train_loss)
             train_rmse_history.append(train_rmse)
 
-            val_loss, val_rmse = self.compute_loss(mode="val")
+            val_loss, val_rmse = self.compute_loss(mode="val", use_features=use_features)
             val_loss_history.append(val_loss)
             val_rmse_history.append(val_rmse)
 
             if (epoch % eval_inter == 0) and (verbose):
-                print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {val_loss:.4f}, RMSE: {val_rmse:.4f}")
+                feat_str = " [with features]" if  use_features else ""
+                print(f"Epoch {epoch}{feat_str}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {val_loss:.4f}, RMSE: {val_rmse:.4f}")
 
         history = {
-            "NLL": {"train": train_loss_history, "val": val_loss_history},
-            "RMSE": {"train": train_rmse_history, "val": val_rmse_history}
+            "train_loss": train_loss_history, "val_loss": val_loss_history,
+            "train_rmse": train_rmse_history, "val_rmse": val_rmse_history
         }
         
         if verbose:
@@ -355,12 +471,19 @@ class MovieLensDataset_Optimized:
 
         return history
 
+    def get_feature_embeddings(self):
+        if hasattr(self, 'W'):
+            return self.W, self.feature_map, self.feature_reverse_map
+        return None, None, None
+
     def load_model(self, model_dir):
         hyper_params = np.load(model_dir)
 
         self.U = hyper_params['U']
         self.V = hyper_params['V']
         self.K = self.U.shape[-1]
+        if 'W' in hyper_params:
+            self.W = hyper_params['W']
         
         self.BM = hyper_params['BM']
         self.BN = hyper_params['BN']
@@ -369,14 +492,25 @@ class MovieLensDataset_Optimized:
         self.lambda_ = hyper_params['lambda_']
         self.gamma = hyper_params['gamma']
         self.tau = hyper_params['tau']
+        if 'eta' in hyper_params:
+            self.eta = hyper_params['eta']
 
     def get_hyperparameters(self):
-        return {
-            'mu': self.mu,
-            'lambda_': self.lambda_,
-            'gamma': self.gamma,
-            'tau': self.tau
-        }
+        if hasattr(self, 'eta'):
+            return {
+                'mu': self.mu,
+                'lambda_': self.lambda_,
+                'gamma': self.gamma,
+                'tau': self.tau,
+                'eta': self.eta
+            }
+        else:
+            return {
+                'mu': self.mu,
+                'lambda_': self.lambda_,
+                'gamma': self.gamma,
+                'tau': self.tau
+            }
 
     def train_test_split(self, split_ratio: float):
         assert (split_ratio >= 0.0) and (split_ratio <= 1.0)
@@ -422,10 +556,10 @@ class MovieLensDataset_Optimized:
         # Test NLL
         plt.subplot(2, 2, 2)
         plt.plot(epochs, val_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, val_loss, label='Val NLL', s=30, color=colors['Optimized'])
+        plt.scatter(epochs, val_loss, label='Validation NLL', s=30, color=colors['Optimized'])
         plt.xscale('log')
         plt.xlabel("Epoch", fontsize=11)
-        plt.title("Test NLL", fontsize=12, fontweight='bold')
+        plt.title("Validation NLL", fontsize=12, fontweight='bold')
         plt.grid(alpha=0.3)
 
         # Train RMSE
@@ -441,19 +575,19 @@ class MovieLensDataset_Optimized:
         # Test RMSE
         plt.subplot(2, 2, 4)
         plt.plot(epochs, val_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, val_rmse, label='Val RMSE', s=30, color=colors['Optimized'])
+        plt.scatter(epochs, val_rmse, label='Validation RMSE', s=30, color=colors['Optimized'])
         plt.xscale('log')
         plt.xlabel("Epoch", fontsize=11)
-        plt.title("Test RMSE", fontsize=12, fontweight='bold')
+        plt.title("Validation RMSE", fontsize=12, fontweight='bold')
         plt.grid(alpha=0.3)
 
         # Get legend from first subplot instead
-        ax1 = fig.get_axes()[0]
-        handles, labels_list = ax1.get_legend_handles_labels()
+        # ax1 = fig.get_axes()[0]
+        # handles, labels_list = ax1.get_legend_handles_labels()
 
         fig.suptitle("Bias + Latent-Factor Update Methods Comparison (32M Samples)", fontsize=14, fontweight='bold', y=0.98)
-        fig.legend(handles, labels_list, loc='upper center', bbox_to_anchor=(0.5, 0.93),
-                ncol=3, frameon=True, fontsize=11, edgecolor='gray')
+        # fig.legend(handles, labels_list, loc='upper center', bbox_to_anchor=(0.5, 0.93),
+        #         ncol=3, frameon=True, fontsize=11, edgecolor='gray')
 
         plt.tight_layout(rect=[0, 0, 1, 0.90])  # Leave space for title and legend
 
@@ -469,3 +603,381 @@ class MovieLensDataset_Optimized:
 
     def test_performance(self):
         return self.compute_loss(mode='test')
+
+    def plot_feature_embeddings(self, save_dir=None, save_name='genre_embeddings_2D', verbose=False):
+        """
+        Plot 2D embeddings of genre/feature vectors with labels.
+        
+        Parameters:
+        -----------
+        dataset : MovieLensDataset_Optimized_WithFeatures
+            Trained dataset object with feature embeddings
+        save_dir : str, optional
+            Directory to save the plot
+        save_name : str
+            Name for the saved plot file
+        """
+        # Get feature embeddings
+        W, feature_map, feature_reverse_map = self.get_feature_embeddings()
+        
+        if W is None:
+            print("No feature embeddings found. Make sure you trained with use_features=True")
+            return
+        
+        if W.shape[1] != 2:
+            if verbose:
+                print(f"Warning: Feature embeddings have {W.shape[1]} dimensions, not 2.")
+                print("This visualization works best with 2D embeddings (latent_dim=2)")
+            if W.shape[1] > 2:
+                if verbose:
+                    print("Using first 2 dimensions only...")
+                W = W[:, :2]
+            else:
+                return
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 10))
+        
+        # Extract coordinates
+        x_coords = W[:, 0]
+        y_coords = W[:, 1]
+        
+        # Plot points
+        scatter = ax.scatter(x_coords, y_coords, 
+                            s=150, 
+                            c=range(len(W)), 
+                            cmap='tab20',
+                            alpha=0.7,
+                            edgecolors='black',
+                            linewidth=1.5,
+                            zorder=3)
+        
+        # Add labels for each genre
+        for feature_idx in range(len(W)):
+            genre_name = feature_reverse_map[feature_idx]
+            
+            # Add text label with white background for readability
+            ax.annotate(genre_name,
+                    xy=(x_coords[feature_idx], y_coords[feature_idx]),
+                    xytext=(5, 5),  # Offset text slightly
+                    textcoords='offset points',
+                    fontsize=10,
+                    fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.3', 
+                            facecolor='white', 
+                            edgecolor='gray',
+                            alpha=0.8),
+                    zorder=4)
+        
+        # Add grid
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+        
+        # Add axis lines through origin
+        ax.axhline(y=0, color='k', linewidth=0.8, alpha=0.3)
+        ax.axvline(x=0, color='k', linewidth=0.8, alpha=0.3)
+        
+        # Labels and title
+        ax.set_xlabel('Latent Dimension 1', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Latent Dimension 2', fontsize=12, fontweight='bold')
+        ax.set_title('2D Embeddings of Genre Features', 
+                    fontsize=14, 
+                    fontweight='bold',
+                    pad=20)
+        
+        # Add info text
+        info_text = f"Number of genres: {len(W)}"
+        ax.text(0.02, 0.98, info_text,
+            transform=ax.transAxes,
+            fontsize=10,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        plt.tight_layout()
+        
+        # Save if directory provided
+        if save_dir is not None:
+            import os
+            os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_dir}/pngs", exist_ok=True)
+            
+            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", 
+                    format="pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pngs/{save_name}.png", 
+                    format="png", dpi=300, bbox_inches='tight')
+            if verbose:
+                print(f"Saved plots to {save_dir}")
+        
+        plt.show()
+        
+        return fig, ax
+
+
+    def plot_feature_embeddings_with_clustering(self, save_dir=None, save_name='genre_embeddings_clustered', verbose=False):
+        """
+        Plot feature embeddings with visual clustering/grouping analysis.
+        Shows which genres are embedded close together.
+        
+        Parameters:
+        -----------
+        dataset : MovieLensDataset_Optimized_WithFeatures
+            Trained dataset object with feature embeddings
+        save_dir : str, optional
+            Directory to save the plot
+        save_name : str
+            Name for the saved plot file
+        """
+        W, feature_map, feature_reverse_map = self.get_feature_embeddings()
+        
+        if W is None or W.shape[1] != 2:
+            print("Feature embeddings not available or not 2D")
+            return
+        
+        # Create figure with subplots
+        fig = plt.figure(figsize=(16, 7))
+        
+        # Left plot: Basic embeddings
+        ax1 = plt.subplot(1, 2, 1)
+        x_coords = W[:, 0]
+        y_coords = W[:, 1]
+        
+        scatter1 = ax1.scatter(x_coords, y_coords,
+                            s=150,
+                            c=range(len(W)),
+                            cmap='tab20',
+                            alpha=0.7,
+                            edgecolors='black',
+                            linewidth=1.5,
+                            zorder=3)
+        
+        for feature_idx in range(len(W)):
+            genre_name = feature_reverse_map[feature_idx]
+            ax1.annotate(genre_name,
+                        xy=(x_coords[feature_idx], y_coords[feature_idx]),
+                        xytext=(5, 5),
+                        textcoords='offset points',
+                        fontsize=9,
+                        bbox=dict(boxstyle='round,pad=0.3',
+                                facecolor='white',
+                                edgecolor='gray',
+                                alpha=0.8))
+        
+        ax1.grid(True, alpha=0.3, linestyle='--')
+        ax1.axhline(y=0, color='k', linewidth=0.8, alpha=0.3)
+        ax1.axvline(x=0, color='k', linewidth=0.8, alpha=0.3)
+        ax1.set_xlabel('Latent Dimension 1', fontsize=11, fontweight='bold')
+        ax1.set_ylabel('Latent Dimension 2', fontsize=11, fontweight='bold')
+        ax1.set_title('Genre Embeddings', fontsize=12, fontweight='bold')
+        
+        # Right plot: Distance matrix / similarity
+        ax2 = plt.subplot(1, 2, 2)
+        
+        # Compute pairwise distances
+        from scipy.spatial.distance import pdist, squareform
+        distances = squareform(pdist(W, metric='euclidean'))
+        
+        # Plot heatmap
+        im = ax2.imshow(distances, cmap='YlOrRd', aspect='auto')
+        
+        # Add genre labels
+        genre_names = [feature_reverse_map[i] for i in range(len(W))]
+        ax2.set_xticks(range(len(W)))
+        ax2.set_yticks(range(len(W)))
+        ax2.set_xticklabels(genre_names, rotation=90, fontsize=9)
+        ax2.set_yticklabels(genre_names, fontsize=9)
+        
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax2)
+        cbar.set_label('Euclidean Distance', fontsize=10, fontweight='bold')
+        
+        ax2.set_title('Pairwise Genre Distances', fontsize=12, fontweight='bold')
+        
+        plt.tight_layout()
+        
+        # Save if directory provided
+        if save_dir is not None:
+            import os
+            os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_dir}/pngs", exist_ok=True)
+            
+            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf",
+                    format="pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pngs/{save_name}.png",
+                    format="png", dpi=300, bbox_inches='tight')
+            if verbose:
+                print(f"Saved clustered plots to {save_dir}")
+        
+        plt.show()
+        
+        if verbose:
+            # Print some insights
+            print("\n=== Genre Similarity Insights ===")
+            print("Closest genre pairs:")
+            for i in range(len(W)):
+                for j in range(i+1, len(W)):
+                    if distances[i, j] < np.percentile(distances, 10):  # Top 10% closest
+                        print(f"  {genre_names[i]:20s} <-> {genre_names[j]:20s} : {distances[i,j]:.3f}")
+            
+            print("\nMost distant genre pairs:")
+            for i in range(len(W)):
+                for j in range(i+1, len(W)):
+                    if distances[i, j] > np.percentile(distances, 90):  # Top 10% most distant
+                        print(f"  {genre_names[i]:20s} <-> {genre_names[j]:20s} : {distances[i,j]:.3f}")
+        
+        return fig
+
+
+    def plot_cosine_similarity_heatmap(self, save_dir=None, save_name='genre_cosine_similarity', verbose=False):
+        """
+        Plot heatmap of pairwise cosine similarities between genre embeddings.
+        
+        Parameters:
+        -----------
+        dataset : MovieLensDataset_Optimized_WithFeatures
+            Trained dataset object with feature embeddings
+        save_dir : str, optional
+            Directory to save the plot
+        save_name : str
+            Name for the saved plot file
+        """
+        W, feature_map, feature_reverse_map = self.get_feature_embeddings()
+        
+        if W is None:
+            print("No feature embeddings found.")
+            return
+        
+        # Compute cosine similarity matrix
+        from sklearn.metrics.pairwise import cosine_similarity
+        cos_sim = cosine_similarity(W)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 10))
+        
+        # Plot heatmap
+        im = ax.imshow(cos_sim, cmap='RdYlGn', aspect='auto', vmin=-1, vmax=1)
+        
+        # Add genre labels
+        genre_names = [feature_reverse_map[i] for i in range(len(W))]
+        ax.set_xticks(range(len(W)))
+        ax.set_yticks(range(len(W)))
+        ax.set_xticklabels(genre_names, rotation=90, fontsize=9)
+        ax.set_yticklabels(genre_names, fontsize=9)
+        
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Cosine Similarity', fontsize=11, fontweight='bold')
+        
+        # Add grid for readability
+        ax.set_xticks(np.arange(len(W)) - 0.5, minor=True)
+        ax.set_yticks(np.arange(len(W)) - 0.5, minor=True)
+        ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5, alpha=0.3)
+        
+        ax.set_title('Pairwise Cosine Similarity Between Genres', 
+                    fontsize=13, fontweight='bold', pad=15)
+        
+        plt.tight_layout()
+        
+        # Save if directory provided
+        if save_dir is not None:
+            import os
+            os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_dir}/pngs", exist_ok=True)
+            
+            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf",
+                    format="pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pngs/{save_name}.png",
+                    format="png", dpi=300, bbox_inches='tight')
+            if verbose:
+                print(f"Saved cosine similarity plot to {save_dir}")
+        
+        plt.show()
+
+        if verbose:
+            # Print insights
+            print("\n" + "="*60)
+            print("COSINE SIMILARITY ANALYSIS")
+            print("="*60)
+            
+            # Find most similar pairs (excluding self-similarity)
+            print("\nMost similar genre pairs (highest cosine similarity):")
+            np.fill_diagonal(cos_sim, -2)  # Exclude diagonal
+            top_pairs = []
+            for i in range(len(W)):
+                for j in range(i+1, len(W)):
+                    top_pairs.append((i, j, cos_sim[i, j]))
+            
+            top_pairs.sort(key=lambda x: x[2], reverse=True)
+            for i, j, sim in top_pairs[:10]:
+                print(f"  {genre_names[i]:20s} <-> {genre_names[j]:20s} : {sim:.4f}")
+            
+            # Find most dissimilar pairs
+            print("\nMost dissimilar genre pairs (lowest cosine similarity):")
+            for i, j, sim in top_pairs[-10:]:
+                print(f"  {genre_names[i]:20s} <-> {genre_names[j]:20s} : {sim:.4f}")
+            
+            print("="*60 + "\n")
+        
+        return fig, cos_sim
+
+
+    def compute_genre_cosine_similarities(self, top_k=10, verbose=False):
+        """
+        Compute and display top-k most similar and dissimilar genre pairs
+        based on cosine similarity.
+        
+        Parameters:
+        -----------
+        dataset : MovieLensDataset_Optimized_WithFeatures
+            Trained dataset object with feature embeddings
+        top_k : int
+            Number of top pairs to display
+        
+        Returns:
+        --------
+        cos_sim : numpy array
+            Full cosine similarity matrix
+        similar_pairs : list
+            List of (genre1, genre2, similarity) tuples (most similar)
+        dissimilar_pairs : list
+            List of (genre1, genre2, similarity) tuples (most dissimilar)
+        """
+        W, feature_map, feature_reverse_map = self.get_feature_embeddings()
+        
+        if W is None:
+            print("No feature embeddings found.")
+            return None, None, None
+        
+        # Compute cosine similarity
+        from sklearn.metrics.pairwise import cosine_similarity
+        cos_sim = cosine_similarity(W)
+        
+        genre_names = [feature_reverse_map[i] for i in range(len(W))]
+        
+        # Get all pairs (upper triangle, excluding diagonal)
+        pairs = []
+        for i in range(len(W)):
+            for j in range(i+1, len(W)):
+                pairs.append((genre_names[i], genre_names[j], cos_sim[i, j]))
+        
+        # Sort by similarity
+        pairs.sort(key=lambda x: x[2], reverse=True)
+        
+        similar_pairs = pairs[:top_k]
+        dissimilar_pairs = pairs[-top_k:][::-1]  # Reverse to show least similar first
+
+        if verbose:
+            print("\n" + "="*70)
+            print(f"TOP {top_k} MOST SIMILAR GENRE PAIRS (Cosine Similarity)")
+            print("="*70)
+            for g1, g2, sim in similar_pairs:
+                bar = "█" * int(sim * 50)  # Visual bar
+                print(f"{g1:20s} <-> {g2:20s} : {sim:6.4f} {bar}")
+            
+            print("\n" + "="*70)
+            print(f"TOP {top_k} MOST DISSIMILAR GENRE PAIRS (Cosine Similarity)")
+            print("="*70)
+            for g1, g2, sim in dissimilar_pairs:
+                bar = "█" * int((1 + sim) * 25)  # Scaled for negative values
+                print(f"{g1:20s} <-> {g2:20s} : {sim:6.4f} {bar}")
+            print("="*70 + "\n")
+        
+        return cos_sim, similar_pairs, dissimilar_pairs
