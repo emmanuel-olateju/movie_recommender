@@ -606,9 +606,63 @@ class MovieLensDataset_Optimized:
                 fig.savefig(f"{save_dir}/pngs/{save_name}.png", format="png", dpi=150, bbox_inches='tight')
             else:
                 raise ValueError('Name for image not specified in argument `save_name`')
+    
+    def test_performance(self, save_folder=None, save_name=None, title=None):
+        test_NLL, test_RMSE = self.compute_loss(mode="test")
+        test_performance = {
+            'NLL (Log Scale)': np.log(test_NLL),
+            'RMSE': test_RMSE
+        }
 
-    def test_performance(self):
-        return self.compute_loss(mode='test')
+        # Create figure and axis with a nice size
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+
+        # Data for plotting
+        metrics = list(test_performance.keys())
+        values = list(test_performance.values())
+
+        # Define beautiful colors
+        colors = ['#8b5cf6', '#06b6d4']  # Purple for NLL, Cyan for RMSE
+
+        # Create bars with gradient effect
+        bars = ax.bar(metrics, values, color=colors, width=0.6,
+                        edgecolor='white', linewidth=2, alpha=0.9)
+
+        # Add value labels on top of bars
+        for bar, value in zip(bars, values):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{value:.4f}',
+                    ha='center', va='bottom', fontsize=14, fontweight='bold')
+
+        # Styling
+        ax.set_ylabel('Value', fontsize=14, fontweight='bold')
+        if title is None:
+            title = 'Test Performance Metrics'
+        ax.set_title(title, fontsize=18, fontweight='bold', pad=20)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_linewidth(2)
+        ax.spines['bottom'].set_linewidth(2)
+        ax.tick_params(axis='both', labelsize=12)
+        ax.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.8)
+        ax.set_axisbelow(True)
+
+        # Add subtle background
+        ax.set_facecolor('#f8f9fa')
+
+        plt.tight_layout()
+
+        if save_folder is not None:
+            if save_name is None:
+                save_name = "test_performance"
+
+            os.makedirs(f"{save_folder}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_folder}/pngs", exist_ok=True)
+            fig.savefig(f'{save_folder}/pdfs/{save_name}.pdf', format='pdf', dpi=300, bbox_inches='tight')
+            fig.savefig(f'{save_folder}/pngs/{save_name}.pngs', format='png', dpi=300, bbox_inches='tight')
+
+        plt.show()
 
     def plot_feature_embeddings(self, save_dir=None, save_name='genre_embeddings_2D', verbose=False):
         """
