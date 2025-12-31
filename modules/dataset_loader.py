@@ -6,6 +6,8 @@ import gc
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from itertools import product
+from tqdm import tqdm
+import math
 
 from IPython.display import clear_output
 
@@ -1057,8 +1059,10 @@ class GridSearch:
         # Get all parameter combinations
         param_names = list(self.param_grid.keys())
         param_values = [self.param_grid[name] for name in param_names]
+
+        total = math.prod(len(v) for v in param_values)
         
-        for values in product(*param_values):
+        for values in tqdm(product(*param_values), total=total, desc='Grid Search'):
             params = dict(zip(param_names, values))
             
             # Train model with these parameters
