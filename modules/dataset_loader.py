@@ -368,7 +368,11 @@ class MovieLensDataset_Optimized:
                     feature_to_movies[feat_idx].append(movie_idx)
             feature_to_movies = [np.array(v, dtype=np.int32) if len(v) > 0 else np.array([], dtype=np.int32) 
                                 for v in feature_to_movies]
-
+        if biases_alone is False:
+            print("Updating Bias + User/Movie Embeeding")
+        else:
+            print("Updating Bias Alone")
+            
         for epoch in tqdm(range(n_iter), total=n_iter, unit_scale=True, unit='it'):
 
             if biases_alone is False:
