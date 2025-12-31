@@ -541,7 +541,7 @@ class MovieLensDataset_Optimized:
     def user_movie_counts(self):
         return self.__n_users, self.__n_movies
 
-    def train_val_performance(self, train_loss, train_rmse, val_loss, val_rmse, save_dir=None, save_name='32M_bias+latentFactor_updates', title=None):
+    def train_val_performance(self, train_loss, train_rmse, val_loss, val_rmse, save_dir=None, save_name=None, title=None):
         fig = plt.figure(figsize=(14, 6))
         n_epochs = len(train_loss)
         assert n_epochs == len(train_rmse) == len(val_loss) == len(val_rmse)
@@ -598,14 +598,13 @@ class MovieLensDataset_Optimized:
         plt.tight_layout(rect=[0, 0, 1, 0.90])  # Leave space for title and legend
 
         if save_dir is not None:
+            if save_name is None:
+                save_name = "train+val_performance"
+
             os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
             os.makedirs(f"{save_dir}/pngs", exist_ok=True)
-            
-            if save_name is not None:
-                fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", format="pdf", dpi=150, bbox_inches='tight')
-                fig.savefig(f"{save_dir}/pngs/{save_name}.png", format="png", dpi=150, bbox_inches='tight')
-            else:
-                raise ValueError('Name for image not specified in argument `save_name`')
+            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", format="pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pngs/{save_name}.png", format="png", dpi=300, bbox_inches='tight')
     
     def test_performance(self, save_folder=None, save_name=None, title=None):
         test_NLL, test_RMSE = self.compute_loss(mode="test")
