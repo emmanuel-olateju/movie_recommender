@@ -372,7 +372,7 @@ class MovieLensDataset_Optimized:
             print("Updating Bias + User/Movie Embeeding")
         else:
             print("Updating Bias Alone")
-            
+
         for epoch in tqdm(range(n_iter), total=n_iter, unit_scale=True, unit='it'):
 
             if biases_alone is False:
@@ -541,7 +541,7 @@ class MovieLensDataset_Optimized:
     def user_movie_counts(self):
         return self.__n_users, self.__n_movies
 
-    def train_val_performance(self, train_loss, train_rmse, val_loss, val_rmse, save_dir=None, save_name='32M_bias+latentFactor_updates'):
+    def train_val_performance(self, train_loss, train_rmse, val_loss, val_rmse, save_dir=None, save_name='32M_bias+latentFactor_updates', title=None):
         fig = plt.figure(figsize=(14, 6))
         n_epochs = len(train_loss)
         assert n_epochs == len(train_rmse) == len(val_loss) == len(val_rmse)
@@ -589,7 +589,9 @@ class MovieLensDataset_Optimized:
         # ax1 = fig.get_axes()[0]
         # handles, labels_list = ax1.get_legend_handles_labels()
 
-        fig.suptitle("Bias + Latent-Factor Update Methods Comparison (32M Samples)", fontsize=14, fontweight='bold', y=0.98)
+        if title is None:
+            title  = "Bias + Latent-Factor Update Methods Comparison (32M Samples)"
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=0.98)
         # fig.legend(handles, labels_list, loc='upper center', bbox_to_anchor=(0.5, 0.93),
         #         ncol=3, frameon=True, fontsize=11, edgecolor='gray')
 
