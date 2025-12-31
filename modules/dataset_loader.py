@@ -1071,8 +1071,8 @@ class GridSearch:
             
             self.results.append({
                 'params': params,
-                'score': rmse,
-                'loss': loss
+                'score': loss,
+                'rmse': rmse
             })
             
             print(f"Params: {params}, RMSE Score: {rmse:.4f}, NLL Score: {loss:.4f}")
@@ -1087,6 +1087,9 @@ class GridSearch:
     
     def best_score(self):
         return self.best_result['score']
+
+    def best_rmse(self):
+        return self.best_result['rmse']
 
     def get_results(self):
         return self.results
