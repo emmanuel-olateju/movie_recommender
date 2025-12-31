@@ -556,10 +556,10 @@ class MovieLensDataset_Optimized:
         # Test NLL
         plt.subplot(2, 2, 2)
         plt.plot(epochs, val_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, val_loss, label='Val NLL', s=30, color=colors['Optimized'])
+        plt.scatter(epochs, val_loss, label='Validation NLL', s=30, color=colors['Optimized'])
         plt.xscale('log')
         plt.xlabel("Epoch", fontsize=11)
-        plt.title("Test NLL", fontsize=12, fontweight='bold')
+        plt.title("Validation NLL", fontsize=12, fontweight='bold')
         plt.grid(alpha=0.3)
 
         # Train RMSE
@@ -575,19 +575,19 @@ class MovieLensDataset_Optimized:
         # Test RMSE
         plt.subplot(2, 2, 4)
         plt.plot(epochs, val_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, val_rmse, label='Val RMSE', s=30, color=colors['Optimized'])
+        plt.scatter(epochs, val_rmse, label='Validation RMSE', s=30, color=colors['Optimized'])
         plt.xscale('log')
         plt.xlabel("Epoch", fontsize=11)
-        plt.title("Test RMSE", fontsize=12, fontweight='bold')
+        plt.title("Validation RMSE", fontsize=12, fontweight='bold')
         plt.grid(alpha=0.3)
 
         # Get legend from first subplot instead
-        ax1 = fig.get_axes()[0]
-        handles, labels_list = ax1.get_legend_handles_labels()
+        # ax1 = fig.get_axes()[0]
+        # handles, labels_list = ax1.get_legend_handles_labels()
 
         fig.suptitle("Bias + Latent-Factor Update Methods Comparison (32M Samples)", fontsize=14, fontweight='bold', y=0.98)
-        fig.legend(handles, labels_list, loc='upper center', bbox_to_anchor=(0.5, 0.93),
-                ncol=3, frameon=True, fontsize=11, edgecolor='gray')
+        # fig.legend(handles, labels_list, loc='upper center', bbox_to_anchor=(0.5, 0.93),
+        #         ncol=3, frameon=True, fontsize=11, edgecolor='gray')
 
         plt.tight_layout(rect=[0, 0, 1, 0.90])  # Leave space for title and legend
 
