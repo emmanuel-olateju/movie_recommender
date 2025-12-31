@@ -179,10 +179,65 @@ class MovieLensDataset_Optimized:
         self.__n_entries = len(self.users)
         self.shape = (self.__n_users, self.__n_movies)
 
-        if MOVIES_DIR is not None:
-            self.__make_movie_features(MOVIES_DIR)
+        # Initialize feature-related attributes
+        self.has_features = False
+        self.feature_map = {}
+        self.feature_reverse_map = {}
+        self.movie_to_features = {}     # movie_idx -> list of feature_idx
 
-    def compute_loss(self, mode="train"):
+        if MOVIES_DIR is not None:
+            self._load_movie_features(MOVIES_DIR)
+
+    def _load_movie_features(self, MOVIES_DIR: str):
+        print("Loading movie features...")
+
+        with open(MOVIES_DIR, encoding="utf-8") as file:
+            next(file)
+
+            for line in tqdm(file, desc="Processing movie features"):
+                line = line.strip()
+                parts = line.split(',')
+                if len(parts) < 3:
+                    continue
+
+                movie_id = int(parts[0])
+                genres_str = parts[-1]
+
+                if movie_id not in self.movies_map:
+                    continue
+
+                movie_idx = self.movies_map[movie_id]
+
+                if genres_str and genres_str != "(no genres listed)":
+                    genres = genres_str.split('|')
+
+                    feature_indices = []
+                    for genre in genres:
+                        genre = genre.strip()
+                        if genre not in self.feature_map:
+                            feature_idx = len(self.feature_map)
+                            self.feature_map[genre] = feature_idx
+                            self.feature_reverse_map[feature_idx] = genre
+                        else:
+                            feature_idx = self.feature_map[genre]
+                        
+                        feature_indices.append(feature_idx)
+                    
+                    self.movie_to_features[movie_idx] = feature_indices
+
+        self.__n_features = len(self.feature_map)
+        self.has_features = self.__n_features > 0
+
+        print(f"Loaded {self.__n_features} unique features (genres)")
+        print(f"Features mapped for {len(self.movie_to_features)}/{self.__n_movies} movies")
+
+    def _build_feature_matrix(self):
+        movie_features = [[] for _ in range(self.__n_movies)]
+        for movie_idx, feature_indices in self.movie_to_features.items():
+            movie_features[movie_idx] = feature_indices
+        return movie_features
+
+    def compute_loss(self, mode="train", use_features=False):
         M, N = self.user_movie_counts()
 
         rating_errors = []
@@ -224,28 +279,55 @@ class MovieLensDataset_Optimized:
 
             loss = (self.lambda_ / 2) * rating_error + \
                     (self.gamma / 2) * (users_bias_squared + movies_bias_squared) + \
-                    (self.tau / 2) * (users_norm + movies_norm)
+                    (self.tau / 2) * (users_norm)
+
+            if use_features and self.has_features and hasattr(self, 'W'):
+                feature_prior = self._compute_feature_prioir()
+                movie_deviation = np.sum((self.V - feature_prior)**2)
+                feature_norm = np.sum(self.W**2)
+
+                loss += (self.tau / 2) * movie_deviation + (self.eta / 2) * feature_norm
+            else:
+                loss += (self.tau / 2) * movies_norm
         else:
             # Test loss: only data fit (no regularization)
             loss = (self.lambda_ / 2) * rating_error  # or even just rating_error
 
         return loss, rmse
 
+    def _compute_feature_prior(self):
+        V_prior = np.zeros_like(self.V)
 
-    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, biases_alone=False, verbose=True):
+        for movie_idx in range(self.__n_movies):
+            if movie_idx in self.movie_to_features:
+                feature_indices = self.movie_to_features[movie_idx]
+                if len(feature_indices) > 0:
+                    V_prior[movie_idx] = np.mean(self.W[feature_indices], axis=0)
+        
+        return V_prior
+
+    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, eta=1, use_features=False, biases_alone=False, verbose=True):
         self.lambda_ = lambda_
         self.tau = tau
         self.gamma = gamma
+        self.eta = eta
 
-        self.train_idx,self.val_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
+        self.train_idx,self.val_idx, self.test_idx = self.train_test_split(split_ratio = (1 - test_size)) 
         M, N  =self.user_movie_counts()
 
         self.K = K = latent_dim
-        self.U = np.random.randn(M, K)
-        self.V = np.random.randn(N, K)
-        self.BM = np.random.randn(M)
-        self.BN = np.random.randn(N)
+        self.U = np.random.randn(M, K) * 0.01
+        self.V = np.random.randn(N, K) * 0.01
+        self.BM = np.random.randn(M) * 0.01
+        self.BN = np.random.randn(N) * 0.01
         self.mu = np.mean(self.ratings[self.train_idx])
+
+        if use_features and self.has_features:
+            self.W = np.random.randnn(self.__n_features, K) * 0.01
+            print(f"Using features: {self.__n_features} features with dim {K}")
+        else:
+            use_features = False
+            print("Training without features")
         
         train_loss_history = []
         train_rmse_history = []
@@ -277,6 +359,15 @@ class MovieLensDataset_Optimized:
                             for v in movie_to_indices]
         print("Lookup tables built")
         gc.collect()
+
+        if use_features:
+            movie_features = self._build_feature_matrix()
+            feature_to_movies = [[] for _ in range(self.__n_features)]
+            for movie_idx, feat_indices in enumerate(movie_features):
+                for feat_idx in feat_indices:
+                    feature_to_movies[feat_idx].append(movie_idx)
+            feature_to_movies = [np.array(v, dtype=np.int32) if len(v) > 0 else np.array([], dtype=np.int32) 
+                                for v in feature_to_movies]
 
         for epoch in tqdm(range(n_iter), total=n_iter, unit_scale=True, unit='it'):
 
@@ -312,8 +403,32 @@ class MovieLensDataset_Optimized:
 
                     U_rated = self.U[users_rating_movie]
                     numerator = lambda_ * np.sum(U_rated * detrended[:, np.newaxis], axis=0)
-                    denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
+
+                    # Add feature prioir contribution if using prior
+                    if use_features and n in self.movie_to_features:
+                        feature_indices = self.movie_to_features[n]
+                        if len(feature_indices) > 0:
+                            v_prior = np.mean(self.W[feature_indices], axis=0)
+                            numerator += tau * v_prior
+                            denominator = lambda_ * (U_rated.T @U_rated) + (2 * tau *np.eye(K))
+                        else:
+                            denominator = lambda_ * (U_rated @ U_rated) + (tau * np.eye(K))
+                    else:
+                        denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
+                    
                     self.V[n] = np.linalg.solve(denominator, numerator)
+
+                # Update feature embeddings if using features
+                if use_features:
+                    for f in range(self.__n_features):
+                        movies_with_feature = feature_to_movies[f]
+                        if len(movies_with_feature) == 0:
+                            continue
+
+                        V_subset = self.V[movies_with_feature]
+                        numerator = tau * np.sum(V_subset, axis=0)
+                        denominator = tau * len(movies_with_feature) + eta
+                        self.W[f] = numerator / denominator
 
             # Bias updates - compute predictions on-the-fly
             # User biases
@@ -333,16 +448,17 @@ class MovieLensDataset_Optimized:
             self.BN[mask] = per_movie_residual_sum[mask] / (lambda_ * per_movie_count[mask] + gamma)
 
             # Evaluate
-            train_loss, train_rmse = self.compute_loss(mode="train")
+            train_loss, train_rmse = self.compute_loss(mode="train", use_features=use_features)
             train_loss_history.append(train_loss)
             train_rmse_history.append(train_rmse)
 
-            val_loss, val_rmse = self.compute_loss(mode="val")
+            val_loss, val_rmse = self.compute_loss(mode="val", use_features=use_features)
             val_loss_history.append(val_loss)
             val_rmse_history.append(val_rmse)
 
             if (epoch % eval_inter == 0) and (verbose):
-                print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {val_loss:.4f}, RMSE: {val_rmse:.4f}")
+                feat_str = " [with features]" if  use_features else ""
+                print(f"Epoch {epoch}{feat_str}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {val_loss:.4f}, RMSE: {val_rmse:.4f}")
 
         history = {
             "NLL": {"train": train_loss_history, "val": val_loss_history},
@@ -355,12 +471,19 @@ class MovieLensDataset_Optimized:
 
         return history
 
+    def get_feature_embeddings(self):
+        if hasattr(self, 'W'):
+            return self.W, self.feature_map, self.feature_reverse_map
+        return None, None, None
+
     def load_model(self, model_dir):
         hyper_params = np.load(model_dir)
 
         self.U = hyper_params['U']
         self.V = hyper_params['V']
         self.K = self.U.shape[-1]
+        if 'W' in hyper_params:
+            self.W = hyper_params['W']
         
         self.BM = hyper_params['BM']
         self.BN = hyper_params['BN']
@@ -369,14 +492,25 @@ class MovieLensDataset_Optimized:
         self.lambda_ = hyper_params['lambda_']
         self.gamma = hyper_params['gamma']
         self.tau = hyper_params['tau']
+        if 'eta' in hyper_params:
+            self.eta = hyper_params['eta']
 
     def get_hyperparameters(self):
-        return {
-            'mu': self.mu,
-            'lambda_': self.lambda_,
-            'gamma': self.gamma,
-            'tau': self.tau
-        }
+        if hasattr(self, 'eta'):
+            return {
+                'mu': self.mu,
+                'lambda_': self.lambda_,
+                'gamma': self.gamma,
+                'tau': self.tau,
+                'eta': self.eta
+            }
+        else:
+            return {
+                'mu': self.mu,
+                'lambda_': self.lambda_,
+                'gamma': self.gamma,
+                'tau': self.tau
+            }
 
     def train_test_split(self, split_ratio: float):
         assert (split_ratio >= 0.0) and (split_ratio <= 1.0)
