@@ -1,7 +1,16 @@
+import os
 from tqdm import tqdm
 import random
 import numpy as np
 import gc
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
+colors = {
+    'isolated': '#2E86AB',      # Blue
+    'Optimized': '#A23B72',    # Purple
+    'batch': '#F18F01'          # Orange
+}
 
 class MovieLensDataset_Base:
     def __init__(self, CSV_DIR: str, MOVIES_DIR: str=None, ) -> None:
@@ -183,10 +192,16 @@ class MovieLensDataset_Optimized:
             users_idx = self.users[self.train_idx]
             movies_idx = self.movies[self.train_idx]
             ratings = self.ratings[self.train_idx]
-        else:
+        elif mode == "val":
+            users_idx = self.users[self.val_idx]
+            movies_idx = self.movies[self.val_idx]
+            ratings = self.ratings[self.val_idx]
+        elif mode == "test":
             users_idx = self.users[self.test_idx]
             movies_idx = self.movies[self.test_idx]
             ratings = self.ratings[self.test_idx]
+        else:
+            raise ValueError("Only three mode arguments allowed: train, val, test")
 
         pred_m_rated = self.mu + np.sum(self.V[movies_idx] * self.U[users_idx], axis=1) + self.BM[users_idx] + self.BN[movies_idx]
         rating_errors = (ratings - pred_m_rated) ** 2
@@ -217,12 +232,12 @@ class MovieLensDataset_Optimized:
         return loss, rmse
 
 
-    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, verbose=True):
+    def train(self, test_size=0.1, latent_dim=10, n_iter=50, eval_inter=5, lambda_=1, tau=1, gamma=1, biases_alone=False, verbose=True):
         self.lambda_ = lambda_
         self.tau = tau
         self.gamma = gamma
 
-        self.train_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
+        self.train_idx,self.val_idx, self.test_idx = self.train_test_split(split_ratio=1 - test_size) 
         M, N  =self.user_movie_counts()
 
         self.K = K = latent_dim
@@ -234,12 +249,12 @@ class MovieLensDataset_Optimized:
         
         train_loss_history = []
         train_rmse_history = []
-        test_loss_history = []
-        test_rmse_history = []
+        val_loss_history = []
+        val_rmse_history = []
         train_loss, train_rmse = self.compute_loss(mode="train")
-        test_loss, test_rmse = self.compute_loss(mode="test")
+        val_loss, val_rmse = self.compute_loss(mode="val")
         start_train_loss = train_loss
-        start_test_loss = test_loss
+        start_val_loss = val_loss
 
         # Only work with TRAIN indices
         train_users = self.users[self.train_idx]
@@ -263,41 +278,42 @@ class MovieLensDataset_Optimized:
         print("Lookup tables built")
         gc.collect()
 
-        for epoch in tqdm(range(n_iter), total=n_iter):
+        for epoch in tqdm(range(n_iter), total=n_iter, unit_scale=True, unit='it'):
 
-            # Update users latent factor - NO detrended_ratings array!
-            for m in range(M):
-                indices = user_to_indices[m]
-                if len(indices) == 0:
-                    continue
+            if biases_alone is False:
+                # Update users latent factor - NO detrended_ratings array!
+                for m in range(M):
+                    indices = user_to_indices[m]
+                    if len(indices) == 0:
+                        continue
 
-                movies_rated_by_m = train_movies[indices]
-                ratings_by_m = train_ratings[indices]
+                    movies_rated_by_m = train_movies[indices]
+                    ratings_by_m = train_ratings[indices]
 
-                # Detrend on-the-fly (no large array creation)
-                detrended = ratings_by_m - self.mu - self.BM[m] - self.BN[movies_rated_by_m]
+                    # Detrend on-the-fly (no large array creation)
+                    detrended = ratings_by_m - self.mu - self.BM[m] - self.BN[movies_rated_by_m]
 
-                V_rated = self.V[movies_rated_by_m]
-                numerator = lambda_ * np.sum(V_rated * detrended[:, np.newaxis], axis=0)
-                denominator = lambda_ * (V_rated.T @ V_rated) + (tau * np.eye(K))
-                self.U[m] = np.linalg.solve(denominator, numerator)
+                    V_rated = self.V[movies_rated_by_m]
+                    numerator = lambda_ * np.sum(V_rated * detrended[:, np.newaxis], axis=0)
+                    denominator = lambda_ * (V_rated.T @ V_rated) + (tau * np.eye(K))
+                    self.U[m] = np.linalg.solve(denominator, numerator)
 
-            # Update movies latent factor
-            for n in range(N):
-                indices = movie_to_indices[n]
-                if len(indices) == 0:
-                    continue
+                # Update movies latent factor
+                for n in range(N):
+                    indices = movie_to_indices[n]
+                    if len(indices) == 0:
+                        continue
 
-                users_rating_movie = train_users[indices]
-                ratings_for_n = train_ratings[indices]
+                    users_rating_movie = train_users[indices]
+                    ratings_for_n = train_ratings[indices]
 
-                # Detrend on-the-fly
-                detrended = ratings_for_n - self.mu - self.BM[users_rating_movie] - self.BN[n]
+                    # Detrend on-the-fly
+                    detrended = ratings_for_n - self.mu - self.BM[users_rating_movie] - self.BN[n]
 
-                U_rated = self.U[users_rating_movie]
-                numerator = lambda_ * np.sum(U_rated * detrended[:, np.newaxis], axis=0)
-                denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
-                self.V[n] = np.linalg.solve(denominator, numerator)
+                    U_rated = self.U[users_rating_movie]
+                    numerator = lambda_ * np.sum(U_rated * detrended[:, np.newaxis], axis=0)
+                    denominator = lambda_ * (U_rated.T @ U_rated) + (tau * np.eye(K))
+                    self.V[n] = np.linalg.solve(denominator, numerator)
 
             # Bias updates - compute predictions on-the-fly
             # User biases
@@ -321,128 +337,135 @@ class MovieLensDataset_Optimized:
             train_loss_history.append(train_loss)
             train_rmse_history.append(train_rmse)
 
-            test_loss, test_rmse = self.compute_loss(mode="test")
-            test_loss_history.append(test_loss)
-            test_rmse_history.append(test_rmse)
+            val_loss, val_rmse = self.compute_loss(mode="val")
+            val_loss_history.append(val_loss)
+            val_rmse_history.append(val_rmse)
 
             if (epoch % eval_inter == 0) and (verbose):
-                print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {test_loss:.4f}, RMSE: {test_rmse:.4f}")
+                print(f"Epoch {epoch}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {val_loss:.4f}, RMSE: {val_rmse:.4f}")
 
         history = {
-            "NLL": {"train": train_loss_history, "test": test_loss_history},
-            "RMSE": {"train": train_rmse_history, "test": test_rmse_history}
+            "NLL": {"train": train_loss_history, "val": val_loss_history},
+            "RMSE": {"train": train_rmse_history, "val": val_rmse_history}
         }
         
         if verbose:
-            print(f"\nEND: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.6f} | Test Loss = {test_loss:.4f}, RMSE: {test_rmse:.6f}")
-            print(f"Loss Reduction: Train {start_train_loss - train_loss:.4f}, Test {start_test_loss - test_loss:.4f}")
+            print(f"\nEND: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.6f} | Val Loss = {val_loss:.4f}, RMSE: {val_rmse:.6f}")
+            print(f"Loss Reduction: Train {start_train_loss - train_loss:.4f}, Val {start_val_loss - val_loss:.4f}")
 
         return history
 
-    def __getitem__(self, index):
-        if isinstance(index, int):
-            pass
+    def load_model(self, model_dir):
+        hyper_params = np.load(model_dir)
 
-    def __make_movie_features(self, CSV_DIR: str=None):
+        self.U = hyper_params['U']
+        self.V = hyper_params['V']
+        self.K = self.U.shape[-1]
+        
+        self.BM = hyper_params['BM']
+        self.BN = hyper_params['BN']
 
-        self.movie_features_idx = dict()
-        self.movie_features_map = dict()
-        self.movie_features_reverse_map = dict()
+        self.mu = hyper_params['mu']
+        self.lambda_ = hyper_params['lambda_']
+        self.gamma = hyper_params['gamma']
+        self.tau = hyper_params['tau']
 
-        with open(CSV_DIR, encoding="utf-8") as file:
-            next(file)
-
-            for line in tqdm(file, desc="Making Movie features"):
-                line = line.strip(" ")
-                values = line.split(",")
-
-                movie = int(values[0])
-                title = int(values[1])
-                genre = int(values[2])
-
-                if title not in self.movie_features_map:
-                    title_idx = len(self.movie_features_map)
-                    self.movie_features_reverse_map[title] = title_idx
-                    self.movie_features_reverse_map[title_idx] = title
-
-                movie_idx = self.movies_map[movie]
-                if movie_idx not in self.movie_features_idx:
-                    self.movie_features_idx[movie_idx] = []
-                self.movie_features_idx[movie_idx].append(title_idx)
-
-                if genre not in self.movie_features_map:
-                    genre_idx = len(self.movie_features_map)
-                    self.movie_features_map[title] = genre_idx
-                    self.movie_features_reverse_map[genre_idx] = genre
-
-                    movie_idx = self.movies_map[movie]
-                    if movie_idx not in self.movie_features_map:
-                        self.movie_features_idx[movie_idx] = []
-                    self.movie_features_idx[movie_idx].append(genre_idx)
+    def get_hyperparameters(self):
+        return {
+            'mu': self.mu,
+            'lambda_': self.lambda_,
+            'gamma': self.gamma,
+            'tau': self.tau
+        }
 
     def train_test_split(self, split_ratio: float):
         assert (split_ratio >= 0.0) and (split_ratio <= 1.0)
      
         # Initialize all four lists based on the size of users/movies
         train_idxs = []
+        val_idxs = []
         test_idxs = []
 
         # Iterate over users
         for idx in tqdm(range(self.__n_entries), total=self.__n_entries):
             if random.uniform(0.0, 1.0) < split_ratio:
                 train_idxs.append(idx)
+            elif random.uniform(0.0, 1.0) <= (split_ratio + ((1 - split_ratio) / 2)):
+                val_idxs.append(idx)
             else:
                 test_idxs.append(idx)
+
         train_idxs = np.array(train_idxs)
+        val_idxs = np.array(val_idxs)
         test_idxs = np.array(test_idxs)
-        return train_idxs, test_idxs
+        return train_idxs, val_idxs, test_idxs
 
     def user_movie_counts(self):
         return self.__n_users, self.__n_movies
 
-class Split:
+    def train_val_performance(self, train_loss, train_rmse, val_loss, val_rmse, save_dir=None, save_name='32M_bias+latentFactor_updates'):
+        fig = plt.figure(figsize=(14, 6))
+        n_epochs = len(train_loss)
+        assert n_epochs == len(train_rmse) == len(val_loss) == len(val_rmse)
+        epochs = np.arange(1, n_epochs+1)
 
-    def __init__(ds, map, reverse_map):
-        pass
+        # Train NLL
+        plt.subplot(2, 2, 1)
+        plt.plot(epochs, train_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
+        plt.scatter(epochs, train_loss, label='Train NLL', s=30, color=colors['Optimized'])
+        plt.xscale('log')
+        plt.ylabel("NLL", fontsize=11)
+        plt.xlabel("Epoch", fontsize=11)
+        plt.grid(alpha=0.3)
+        plt.title("Train NLL", fontsize=12, fontweight='bold')
 
-class MoviesLensSplit:
+        # Test NLL
+        plt.subplot(2, 2, 2)
+        plt.plot(epochs, val_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
+        plt.scatter(epochs, val_loss, label='Val NLL', s=30, color=colors['Optimized'])
+        plt.xscale('log')
+        plt.xlabel("Epoch", fontsize=11)
+        plt.title("Test NLL", fontsize=12, fontweight='bold')
+        plt.grid(alpha=0.3)
 
-    def __init__(self, ds: MovieLensDataset_Base, split_ratio:0.9) -> None:
-        assert (split_ratio >= 0.0) and (split_ratio <= 1.0)
+        # Train RMSE
+        plt.subplot(2, 2, 3)
+        plt.plot(epochs, train_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
+        plt.scatter(epochs, train_rmse, label='Train RMSE', s=30, color=colors['Optimized'])
+        plt.xscale('log')
+        plt.ylabel("RMSE", fontsize=11)
+        plt.xlabel("Epoch", fontsize=11)
+        plt.grid(alpha=0.3)
+        plt.title("Train RMSE", fontsize=12, fontweight='bold')
 
-        self.users_map = ds.users_map
-        self.users_reverse_map = ds.users_reverse_map
-        self.user_train = []
-        self.user_test = []
+        # Test RMSE
+        plt.subplot(2, 2, 4)
+        plt.plot(epochs, val_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
+        plt.scatter(epochs, val_rmse, label='Val RMSE', s=30, color=colors['Optimized'])
+        plt.xscale('log')
+        plt.xlabel("Epoch", fontsize=11)
+        plt.title("Test RMSE", fontsize=12, fontweight='bold')
+        plt.grid(alpha=0.3)
 
-        for user_key, user_idx in ds.users_map.items():
+        # Get legend from first subplot instead
+        ax1 = fig.get_axes()[0]
+        handles, labels_list = ax1.get_legend_handles_labels()
 
-            self.user_train.append([])
-            self.user_test.append([])
+        fig.suptitle("Bias + Latent-Factor Update Methods Comparison (32M Samples)", fontsize=14, fontweight='bold', y=0.98)
+        fig.legend(handles, labels_list, loc='upper center', bbox_to_anchor=(0.5, 0.93),
+                ncol=3, frameon=True, fontsize=11, edgecolor='gray')
 
-            for j, rating_tuple in enumerate(ds.user_ratings[self.user_idx]):
-                if random.uniform(0.0, 1.0) >= split_ratio:
-                    self.user_test[user_idx].append(rating_tuple)
-                else:
-                    self.user_train[user_idx].append(rating_tuple)
+        plt.tight_layout(rect=[0, 0, 1, 0.90])  # Leave space for title and legend
 
-        
-        self.movies_map = ds.movies_map
-        self.movies_reverse_map = ds.movies_reverse_map
-        self.movie_train = []
-        self.movie_test = []
+        if save_dir is not None:
+            os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_dir}/pngs", exist_ok=True)
+            
+            if save_name is not None:
+                fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", format="pdf", dpi=150, bbox_inches='tight')
+                fig.savefig(f"{save_dir}/pngs/{save_name}.png", format="png", dpi=150, bbox_inches='tight')
+            else:
+                raise ValueError('Name for image not specified in argument `save_name`')
 
-        for movie_key , movie_idx in ds.movie_map.items():
-
-            self.movie_train.append([])
-            self.movie_test.append([])
-
-            for j, rating_tuple in enumerate(ds.movie_ratings[movie_idx]):
-                if random.uniform(0.0, 1.0) >= split_ratio:
-                    self.movie_test[movie_idx].append(rating_tuple)
-                else:
-                    self.movie_train[movie_idx].append(rating_tuple)
-
-
-    def __getitem__(self, index: int):
-        pass
+    def test_performance(self):
+        return self.compute_loss(mode='test')
