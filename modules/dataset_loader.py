@@ -461,8 +461,8 @@ class MovieLensDataset_Optimized:
                 print(f"Epoch {epoch}{feat_str}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {val_loss:.4f}, RMSE: {val_rmse:.4f}")
 
         history = {
-            "NLL": {"train": train_loss_history, "val": val_loss_history},
-            "RMSE": {"train": train_rmse_history, "val": val_rmse_history}
+            "train_loss": train_loss_history, "val_loss": val_loss_history,
+            "train_rmse": train_rmse_history, "val_rmse": val_rmse_history
         }
         
         if verbose:
