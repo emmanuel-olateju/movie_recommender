@@ -378,6 +378,7 @@ class MovieLensDataset_Optimized:
         else:
             print("Updating Bias Alone")
 
+        prev_val_loss = np.inf
         for epoch in tqdm(range(n_iter), total=n_iter, unit_scale=True, unit='it'):
 
             if biases_alone is False:
@@ -468,6 +469,11 @@ class MovieLensDataset_Optimized:
             if (epoch % eval_inter == 0) and (verbose):
                 feat_str = " [with features]" if  use_features else ""
                 print(f"Epoch {epoch}{feat_str}: Train Loss = {train_loss:.4f}, RMSE: {train_rmse:.4f} | Test Loss = {val_loss:.4f}, RMSE: {val_rmse:.4f}")
+
+            if val_loss < prev_val_loss:
+                prev_val_loss = val_loss
+            else:
+                break
 
         history = {
             "train_loss": train_loss_history, "val_loss": val_loss_history,
