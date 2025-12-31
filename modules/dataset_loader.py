@@ -5,6 +5,7 @@ import numpy as np
 import gc
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from itertools import product
 
 colors = {
     'isolated': '#2E86AB',      # Blue
@@ -1040,3 +1041,45 @@ class MovieLensDataset_Optimized:
             print("="*70 + "\n")
         
         return cos_sim, similar_pairs, dissimilar_pairs
+
+class GridSearch:
+    def __init__(self, param_grid):
+        """
+        param_grid: dict with parameter names as keys and lists of values
+        Example: {'gamma': [0.0, 0.25], 'lambda': [0.5, 1.0]}
+        """
+        self.param_grid = param_grid
+        self.results = []
+    
+    def fit(self, dataset:MovieLensDataset_Optimized):
+        # Get all parameter combinations
+        param_names = list(self.param_grid.keys())
+        param_values = [self.param_grid[name] for name in param_names]
+        
+        for values in product(*param_values):
+            params = dict(zip(param_names, values))
+            
+            # Train model with these parameters
+            _ = dataset.train(**params)
+            loss, rmse = dataset.compute_loss(mode="val")
+            
+            self.results.append({
+                'params': params,
+                'score': rmse,
+                'loss': loss
+            })
+            
+            print(f"Params: {params}, RMSE Score: {rmse:.4f}, NLL Score: {loss:.4f}")
+        
+        # Find best parameters
+        self.best_result = max(self.results, key=lambda x: x['score'])
+        return self
+    
+    def best_params(self):
+        return self.best_result['params']
+    
+    def best_score(self):
+        return self.best_result['score']
+
+    def get_results(self):
+        return self.results
