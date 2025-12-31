@@ -282,7 +282,7 @@ class MovieLensDataset_Optimized:
                     (self.tau / 2) * (users_norm)
 
             if use_features and self.has_features and hasattr(self, 'W'):
-                feature_prior = self._compute_feature_prioir()
+                feature_prior = self._compute_feature_prior()
                 movie_deviation = np.sum((self.V - feature_prior)**2)
                 feature_norm = np.sum(self.W**2)
 
