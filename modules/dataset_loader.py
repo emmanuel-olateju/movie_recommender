@@ -603,3 +603,381 @@ class MovieLensDataset_Optimized:
 
     def test_performance(self):
         return self.compute_loss(mode='test')
+
+    def plot_feature_embeddings(self, save_dir=None, save_name='genre_embeddings_2D', verbose=False):
+        """
+        Plot 2D embeddings of genre/feature vectors with labels.
+        
+        Parameters:
+        -----------
+        dataset : MovieLensDataset_Optimized_WithFeatures
+            Trained dataset object with feature embeddings
+        save_dir : str, optional
+            Directory to save the plot
+        save_name : str
+            Name for the saved plot file
+        """
+        # Get feature embeddings
+        W, feature_map, feature_reverse_map = self.get_feature_embeddings()
+        
+        if W is None:
+            print("No feature embeddings found. Make sure you trained with use_features=True")
+            return
+        
+        if W.shape[1] != 2:
+            if verbose:
+                print(f"Warning: Feature embeddings have {W.shape[1]} dimensions, not 2.")
+                print("This visualization works best with 2D embeddings (latent_dim=2)")
+            if W.shape[1] > 2:
+                if verbose:
+                    print("Using first 2 dimensions only...")
+                W = W[:, :2]
+            else:
+                return
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 10))
+        
+        # Extract coordinates
+        x_coords = W[:, 0]
+        y_coords = W[:, 1]
+        
+        # Plot points
+        scatter = ax.scatter(x_coords, y_coords, 
+                            s=150, 
+                            c=range(len(W)), 
+                            cmap='tab20',
+                            alpha=0.7,
+                            edgecolors='black',
+                            linewidth=1.5,
+                            zorder=3)
+        
+        # Add labels for each genre
+        for feature_idx in range(len(W)):
+            genre_name = feature_reverse_map[feature_idx]
+            
+            # Add text label with white background for readability
+            ax.annotate(genre_name,
+                    xy=(x_coords[feature_idx], y_coords[feature_idx]),
+                    xytext=(5, 5),  # Offset text slightly
+                    textcoords='offset points',
+                    fontsize=10,
+                    fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.3', 
+                            facecolor='white', 
+                            edgecolor='gray',
+                            alpha=0.8),
+                    zorder=4)
+        
+        # Add grid
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+        
+        # Add axis lines through origin
+        ax.axhline(y=0, color='k', linewidth=0.8, alpha=0.3)
+        ax.axvline(x=0, color='k', linewidth=0.8, alpha=0.3)
+        
+        # Labels and title
+        ax.set_xlabel('Latent Dimension 1', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Latent Dimension 2', fontsize=12, fontweight='bold')
+        ax.set_title('2D Embeddings of Genre Features', 
+                    fontsize=14, 
+                    fontweight='bold',
+                    pad=20)
+        
+        # Add info text
+        info_text = f"Number of genres: {len(W)}"
+        ax.text(0.02, 0.98, info_text,
+            transform=ax.transAxes,
+            fontsize=10,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        plt.tight_layout()
+        
+        # Save if directory provided
+        if save_dir is not None:
+            import os
+            os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_dir}/pngs", exist_ok=True)
+            
+            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", 
+                    format="pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pngs/{save_name}.png", 
+                    format="png", dpi=300, bbox_inches='tight')
+            if verbose:
+                print(f"Saved plots to {save_dir}")
+        
+        plt.show()
+        
+        return fig, ax
+
+
+    def plot_feature_embeddings_with_clustering(self, save_dir=None, save_name='genre_embeddings_clustered', verbose=False):
+        """
+        Plot feature embeddings with visual clustering/grouping analysis.
+        Shows which genres are embedded close together.
+        
+        Parameters:
+        -----------
+        dataset : MovieLensDataset_Optimized_WithFeatures
+            Trained dataset object with feature embeddings
+        save_dir : str, optional
+            Directory to save the plot
+        save_name : str
+            Name for the saved plot file
+        """
+        W, feature_map, feature_reverse_map = self.get_feature_embeddings()
+        
+        if W is None or W.shape[1] != 2:
+            print("Feature embeddings not available or not 2D")
+            return
+        
+        # Create figure with subplots
+        fig = plt.figure(figsize=(16, 7))
+        
+        # Left plot: Basic embeddings
+        ax1 = plt.subplot(1, 2, 1)
+        x_coords = W[:, 0]
+        y_coords = W[:, 1]
+        
+        scatter1 = ax1.scatter(x_coords, y_coords,
+                            s=150,
+                            c=range(len(W)),
+                            cmap='tab20',
+                            alpha=0.7,
+                            edgecolors='black',
+                            linewidth=1.5,
+                            zorder=3)
+        
+        for feature_idx in range(len(W)):
+            genre_name = feature_reverse_map[feature_idx]
+            ax1.annotate(genre_name,
+                        xy=(x_coords[feature_idx], y_coords[feature_idx]),
+                        xytext=(5, 5),
+                        textcoords='offset points',
+                        fontsize=9,
+                        bbox=dict(boxstyle='round,pad=0.3',
+                                facecolor='white',
+                                edgecolor='gray',
+                                alpha=0.8))
+        
+        ax1.grid(True, alpha=0.3, linestyle='--')
+        ax1.axhline(y=0, color='k', linewidth=0.8, alpha=0.3)
+        ax1.axvline(x=0, color='k', linewidth=0.8, alpha=0.3)
+        ax1.set_xlabel('Latent Dimension 1', fontsize=11, fontweight='bold')
+        ax1.set_ylabel('Latent Dimension 2', fontsize=11, fontweight='bold')
+        ax1.set_title('Genre Embeddings', fontsize=12, fontweight='bold')
+        
+        # Right plot: Distance matrix / similarity
+        ax2 = plt.subplot(1, 2, 2)
+        
+        # Compute pairwise distances
+        from scipy.spatial.distance import pdist, squareform
+        distances = squareform(pdist(W, metric='euclidean'))
+        
+        # Plot heatmap
+        im = ax2.imshow(distances, cmap='YlOrRd', aspect='auto')
+        
+        # Add genre labels
+        genre_names = [feature_reverse_map[i] for i in range(len(W))]
+        ax2.set_xticks(range(len(W)))
+        ax2.set_yticks(range(len(W)))
+        ax2.set_xticklabels(genre_names, rotation=90, fontsize=9)
+        ax2.set_yticklabels(genre_names, fontsize=9)
+        
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax2)
+        cbar.set_label('Euclidean Distance', fontsize=10, fontweight='bold')
+        
+        ax2.set_title('Pairwise Genre Distances', fontsize=12, fontweight='bold')
+        
+        plt.tight_layout()
+        
+        # Save if directory provided
+        if save_dir is not None:
+            import os
+            os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_dir}/pngs", exist_ok=True)
+            
+            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf",
+                    format="pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pngs/{save_name}.png",
+                    format="png", dpi=300, bbox_inches='tight')
+            if verbose:
+                print(f"Saved clustered plots to {save_dir}")
+        
+        plt.show()
+        
+        if verbose:
+            # Print some insights
+            print("\n=== Genre Similarity Insights ===")
+            print("Closest genre pairs:")
+            for i in range(len(W)):
+                for j in range(i+1, len(W)):
+                    if distances[i, j] < np.percentile(distances, 10):  # Top 10% closest
+                        print(f"  {genre_names[i]:20s} <-> {genre_names[j]:20s} : {distances[i,j]:.3f}")
+            
+            print("\nMost distant genre pairs:")
+            for i in range(len(W)):
+                for j in range(i+1, len(W)):
+                    if distances[i, j] > np.percentile(distances, 90):  # Top 10% most distant
+                        print(f"  {genre_names[i]:20s} <-> {genre_names[j]:20s} : {distances[i,j]:.3f}")
+        
+        return fig
+
+
+    def plot_cosine_similarity_heatmap(self, save_dir=None, save_name='genre_cosine_similarity', verbose=False):
+        """
+        Plot heatmap of pairwise cosine similarities between genre embeddings.
+        
+        Parameters:
+        -----------
+        dataset : MovieLensDataset_Optimized_WithFeatures
+            Trained dataset object with feature embeddings
+        save_dir : str, optional
+            Directory to save the plot
+        save_name : str
+            Name for the saved plot file
+        """
+        W, feature_map, feature_reverse_map = self.get_feature_embeddings()
+        
+        if W is None:
+            print("No feature embeddings found.")
+            return
+        
+        # Compute cosine similarity matrix
+        from sklearn.metrics.pairwise import cosine_similarity
+        cos_sim = cosine_similarity(W)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 10))
+        
+        # Plot heatmap
+        im = ax.imshow(cos_sim, cmap='RdYlGn', aspect='auto', vmin=-1, vmax=1)
+        
+        # Add genre labels
+        genre_names = [feature_reverse_map[i] for i in range(len(W))]
+        ax.set_xticks(range(len(W)))
+        ax.set_yticks(range(len(W)))
+        ax.set_xticklabels(genre_names, rotation=90, fontsize=9)
+        ax.set_yticklabels(genre_names, fontsize=9)
+        
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Cosine Similarity', fontsize=11, fontweight='bold')
+        
+        # Add grid for readability
+        ax.set_xticks(np.arange(len(W)) - 0.5, minor=True)
+        ax.set_yticks(np.arange(len(W)) - 0.5, minor=True)
+        ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5, alpha=0.3)
+        
+        ax.set_title('Pairwise Cosine Similarity Between Genres', 
+                    fontsize=13, fontweight='bold', pad=15)
+        
+        plt.tight_layout()
+        
+        # Save if directory provided
+        if save_dir is not None:
+            import os
+            os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
+            os.makedirs(f"{save_dir}/pngs", exist_ok=True)
+            
+            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf",
+                    format="pdf", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pngs/{save_name}.png",
+                    format="png", dpi=300, bbox_inches='tight')
+            if verbose:
+                print(f"Saved cosine similarity plot to {save_dir}")
+        
+        plt.show()
+
+        if verbose:
+            # Print insights
+            print("\n" + "="*60)
+            print("COSINE SIMILARITY ANALYSIS")
+            print("="*60)
+            
+            # Find most similar pairs (excluding self-similarity)
+            print("\nMost similar genre pairs (highest cosine similarity):")
+            np.fill_diagonal(cos_sim, -2)  # Exclude diagonal
+            top_pairs = []
+            for i in range(len(W)):
+                for j in range(i+1, len(W)):
+                    top_pairs.append((i, j, cos_sim[i, j]))
+            
+            top_pairs.sort(key=lambda x: x[2], reverse=True)
+            for i, j, sim in top_pairs[:10]:
+                print(f"  {genre_names[i]:20s} <-> {genre_names[j]:20s} : {sim:.4f}")
+            
+            # Find most dissimilar pairs
+            print("\nMost dissimilar genre pairs (lowest cosine similarity):")
+            for i, j, sim in top_pairs[-10:]:
+                print(f"  {genre_names[i]:20s} <-> {genre_names[j]:20s} : {sim:.4f}")
+            
+            print("="*60 + "\n")
+        
+        return fig, cos_sim
+
+
+    def compute_genre_cosine_similarities(self, top_k=10, verbose=False):
+        """
+        Compute and display top-k most similar and dissimilar genre pairs
+        based on cosine similarity.
+        
+        Parameters:
+        -----------
+        dataset : MovieLensDataset_Optimized_WithFeatures
+            Trained dataset object with feature embeddings
+        top_k : int
+            Number of top pairs to display
+        
+        Returns:
+        --------
+        cos_sim : numpy array
+            Full cosine similarity matrix
+        similar_pairs : list
+            List of (genre1, genre2, similarity) tuples (most similar)
+        dissimilar_pairs : list
+            List of (genre1, genre2, similarity) tuples (most dissimilar)
+        """
+        W, feature_map, feature_reverse_map = self.get_feature_embeddings()
+        
+        if W is None:
+            print("No feature embeddings found.")
+            return None, None, None
+        
+        # Compute cosine similarity
+        from sklearn.metrics.pairwise import cosine_similarity
+        cos_sim = cosine_similarity(W)
+        
+        genre_names = [feature_reverse_map[i] for i in range(len(W))]
+        
+        # Get all pairs (upper triangle, excluding diagonal)
+        pairs = []
+        for i in range(len(W)):
+            for j in range(i+1, len(W)):
+                pairs.append((genre_names[i], genre_names[j], cos_sim[i, j]))
+        
+        # Sort by similarity
+        pairs.sort(key=lambda x: x[2], reverse=True)
+        
+        similar_pairs = pairs[:top_k]
+        dissimilar_pairs = pairs[-top_k:][::-1]  # Reverse to show least similar first
+
+        if verbose:
+            print("\n" + "="*70)
+            print(f"TOP {top_k} MOST SIMILAR GENRE PAIRS (Cosine Similarity)")
+            print("="*70)
+            for g1, g2, sim in similar_pairs:
+                bar = "█" * int(sim * 50)  # Visual bar
+                print(f"{g1:20s} <-> {g2:20s} : {sim:6.4f} {bar}")
+            
+            print("\n" + "="*70)
+            print(f"TOP {top_k} MOST DISSIMILAR GENRE PAIRS (Cosine Similarity)")
+            print("="*70)
+            for g1, g2, sim in dissimilar_pairs:
+                bar = "█" * int((1 + sim) * 25)  # Scaled for negative values
+                print(f"{g1:20s} <-> {g2:20s} : {sim:6.4f} {bar}")
+            print("="*70 + "\n")
+        
+        return cos_sim, similar_pairs, dissimilar_pairs
