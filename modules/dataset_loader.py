@@ -323,7 +323,7 @@ class MovieLensDataset_Optimized:
         self.mu = np.mean(self.ratings[self.train_idx])
 
         if use_features and self.has_features:
-            self.W = np.random.randnn(self.__n_features, K) * 0.01
+            self.W = np.random.randn(self.__n_features, K) * 0.01
             print(f"Using features: {self.__n_features} features with dim {K}")
         else:
             use_features = False
