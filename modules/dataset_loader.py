@@ -317,8 +317,33 @@ class MovieLensDataset_Optimized:
         self.gamma = gamma
         self.eta = eta
 
-        self.train_idx,self.val_idx, self.test_idx = self.train_test_split(split_ratio = (1 - test_size)) 
         M, N  =self.user_movie_counts()
+
+        if hasattr(self, 'train_idx'):
+            pass
+        else:
+            self.train_idx,self.val_idx, self.test_idx = self.train_test_split(split_ratio = (1 - test_size)) 
+            # Only work with TRAIN indices
+            train_users = self.users[self.train_idx]
+            train_movies = self.movies[self.train_idx]
+            train_ratings = self.ratings[self.train_idx]
+
+            # Pre-build lookups ONLY for train data
+            print("Building lookup tables ...")
+            self.user_to_indices = [[] for _ in range(M)] 
+            self.movie_to_indices = [[] for _ in range(N)]
+
+            for idx in tqdm(range(len(train_users)), desc="Building lookups"):
+                self.user_to_indices[train_users[idx]].append(idx)
+                self.movie_to_indices[train_movies[idx]].append(idx)
+
+            # Convert to numpy arrays
+            self.user_to_indices = [np.array(v, dtype=np.int32) if len(v) > 0 else np.array([], dtype=np.int32)
+                            for v in self.user_to_indices]
+            self.movie_to_indices = [np.array(v, dtype=np.int32) if len(v) > 0  else np.array([], dtype=np.int32)
+                                for v in self.movie_to_indices]
+            print("Lookup tables built")
+            gc.collect()
 
         self.K = K = latent_dim
         self.U = np.random.randn(M, K) * 0.01
@@ -348,23 +373,6 @@ class MovieLensDataset_Optimized:
         train_movies = self.movies[self.train_idx]
         train_ratings = self.ratings[self.train_idx]
 
-        # Pre-build lookups ONLY for train data
-        print("Building lookup tables ...")
-        user_to_indices = [[] for _ in range(M)] 
-        movie_to_indices = [[] for _ in range(N)]
-
-        for idx in tqdm(range(len(train_users)), desc="Building lookups"):
-            user_to_indices[train_users[idx]].append(idx)
-            movie_to_indices[train_movies[idx]].append(idx)
-
-        # Convert to nbmpy arrays
-        user_to_indices = [np.array(v, dtype=np.int32) if len(v) > 0 else np.array([], dtype=np.int32)
-                           for v in user_to_indices]
-        movie_to_indices = [np.array(v, dtype=np.int32) if len(v) > 0  else np.array([], dtype=np.int32)
-                            for v in movie_to_indices]
-        print("Lookup tables built")
-        gc.collect()
-
         if use_features:
             movie_features = self._build_feature_matrix()
             feature_to_movies = [[] for _ in range(self.__n_features)]
@@ -384,7 +392,7 @@ class MovieLensDataset_Optimized:
             if biases_alone is False:
                 # Update users latent factor - NO detrended_ratings array!
                 for m in range(M):
-                    indices = user_to_indices[m]
+                    indices = self.user_to_indices[m]
                     if len(indices) == 0:
                         continue
 
@@ -401,7 +409,7 @@ class MovieLensDataset_Optimized:
 
                 # Update movies latent factor
                 for n in range(N):
-                    indices = movie_to_indices[n]
+                    indices = self.movie_to_indices[n]
                     if len(indices) == 0:
                         continue
 
