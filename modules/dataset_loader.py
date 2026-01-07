@@ -569,7 +569,7 @@ class MovieLensDataset_Optimized:
         # Train NLL
         plt.subplot(2, 2, 1)
         plt.plot(epochs, train_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, train_loss, label='Train NLL', s=30, color=colors['Optimized'], rasterize=True)
+        plt.scatter(epochs, train_loss, label='Train NLL', s=30, color=colors['Optimized'], rasterized=True)
         plt.xscale('log')
         plt.ylabel("NLL", fontsize=11)
         plt.xlabel("Epoch", fontsize=11)
@@ -579,7 +579,7 @@ class MovieLensDataset_Optimized:
         # Test NLL
         plt.subplot(2, 2, 2)
         plt.plot(epochs, val_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, val_loss, label='Validation NLL', s=30, color=colors['Optimized'], rasterize=True)
+        plt.scatter(epochs, val_loss, label='Validation NLL', s=30, color=colors['Optimized'], rasterized=True)
         plt.xscale('log')
         plt.xlabel("Epoch", fontsize=11)
         plt.title("Validation NLL", fontsize=12, fontweight='bold')
@@ -588,7 +588,7 @@ class MovieLensDataset_Optimized:
         # Train RMSE
         plt.subplot(2, 2, 3)
         plt.plot(epochs, train_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, train_rmse, label='Train RMSE', s=30, color=colors['Optimized'], rasterize=True)
+        plt.scatter(epochs, train_rmse, label='Train RMSE', s=30, color=colors['Optimized'], rasterized=True)
         plt.xscale('log')
         plt.ylabel("RMSE", fontsize=11)
         plt.xlabel("Epoch", fontsize=11)
@@ -598,7 +598,7 @@ class MovieLensDataset_Optimized:
         # Test RMSE
         plt.subplot(2, 2, 4)
         plt.plot(epochs, val_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, val_rmse, label='Validation RMSE', s=30, color=colors['Optimized'], rasterize=True)
+        plt.scatter(epochs, val_rmse, label='Validation RMSE', s=30, color=colors['Optimized'], rasterized=True)
         plt.xscale('log')
         plt.xlabel("Epoch", fontsize=11)
         plt.title("Validation RMSE", fontsize=12, fontweight='bold')
@@ -729,7 +729,7 @@ class MovieLensDataset_Optimized:
                             edgecolors='black',
                             linewidth=1.5,
                             zorder=3,
-                            rasterize=True)
+                            rasterized=True)
         
         # Add labels for each genre
         for feature_idx in range(len(W)):
@@ -827,7 +827,7 @@ class MovieLensDataset_Optimized:
                             edgecolors='black',
                             linewidth=1.5,
                             zorder=3,
-                            rasterize=True)
+                            rasterized=True)
         
         for feature_idx in range(len(W)):
             genre_name = feature_reverse_map[feature_idx]
