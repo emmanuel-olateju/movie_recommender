@@ -569,7 +569,7 @@ class MovieLensDataset_Optimized:
         # Train NLL
         plt.subplot(2, 2, 1)
         plt.plot(epochs, train_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, train_loss, label='Train NLL', s=30, color=colors['Optimized'])
+        plt.scatter(epochs, train_loss, label='Train NLL', s=30, color=colors['Optimized'], rasterize=True)
         plt.xscale('log')
         plt.ylabel("NLL", fontsize=11)
         plt.xlabel("Epoch", fontsize=11)
@@ -579,7 +579,7 @@ class MovieLensDataset_Optimized:
         # Test NLL
         plt.subplot(2, 2, 2)
         plt.plot(epochs, val_loss, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, val_loss, label='Validation NLL', s=30, color=colors['Optimized'])
+        plt.scatter(epochs, val_loss, label='Validation NLL', s=30, color=colors['Optimized'], rasterize=True)
         plt.xscale('log')
         plt.xlabel("Epoch", fontsize=11)
         plt.title("Validation NLL", fontsize=12, fontweight='bold')
@@ -588,7 +588,7 @@ class MovieLensDataset_Optimized:
         # Train RMSE
         plt.subplot(2, 2, 3)
         plt.plot(epochs, train_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, train_rmse, label='Train RMSE', s=30, color=colors['Optimized'])
+        plt.scatter(epochs, train_rmse, label='Train RMSE', s=30, color=colors['Optimized'], rasterize=True)
         plt.xscale('log')
         plt.ylabel("RMSE", fontsize=11)
         plt.xlabel("Epoch", fontsize=11)
@@ -598,7 +598,7 @@ class MovieLensDataset_Optimized:
         # Test RMSE
         plt.subplot(2, 2, 4)
         plt.plot(epochs, val_rmse, alpha=0.3, linewidth=1, color=colors['Optimized'])
-        plt.scatter(epochs, val_rmse, label='Validation RMSE', s=30, color=colors['Optimized'])
+        plt.scatter(epochs, val_rmse, label='Validation RMSE', s=30, color=colors['Optimized'], rasterize=True)
         plt.xscale('log')
         plt.xlabel("Epoch", fontsize=11)
         plt.title("Validation RMSE", fontsize=12, fontweight='bold')
@@ -614,7 +614,7 @@ class MovieLensDataset_Optimized:
         # fig.legend(handles, labels_list, loc='upper center', bbox_to_anchor=(0.5, 0.93),
         #         ncol=3, frameon=True, fontsize=11, edgecolor='gray')
 
-        plt.tight_layout(rect=[0, 0, 1, 0.90])  # Leave space for title and legend
+        plt.tight_layout(rect=[0, 0, 1, 0.90])  # Leave space for title and legendafdpi
 
         if save_dir is not None:
             if save_name is None:
@@ -622,8 +622,8 @@ class MovieLensDataset_Optimized:
 
             os.makedirs(f"{save_dir}/pdfs", exist_ok=True)
             os.makedirs(f"{save_dir}/pngs", exist_ok=True)
-            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", format="pdf", dpi=300, bbox_inches='tight')
-            fig.savefig(f"{save_dir}/pngs/{save_name}.png", format="png", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", format="pdf", dpi=100, bbox_inches='tight')
+            fig.savefig(f"{save_dir}/pngs/{save_name}.png", format="png", dpi=100, bbox_inches='tight')
     
     def test_performance(self, save_folder=None, save_name=None, title=None):
         test_NLL, test_RMSE = self.compute_loss(mode="test")
@@ -677,8 +677,8 @@ class MovieLensDataset_Optimized:
 
             os.makedirs(f"{save_folder}/pdfs", exist_ok=True)
             os.makedirs(f"{save_folder}/pngs", exist_ok=True)
-            fig.savefig(f'{save_folder}/pdfs/{save_name}.pdf', format='pdf', dpi=300, bbox_inches='tight')
-            fig.savefig(f'{save_folder}/pngs/{save_name}.pngs', format='png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'{save_folder}/pdfs/{save_name}.pdf', format='pdf', dpi=100, bbox_inches='tight')
+            fig.savefig(f'{save_folder}/pngs/{save_name}.pngs', format='png', dpi=100, bbox_inches='tight')
 
         plt.show()
 
@@ -728,7 +728,8 @@ class MovieLensDataset_Optimized:
                             alpha=0.7,
                             edgecolors='black',
                             linewidth=1.5,
-                            zorder=3)
+                            zorder=3,
+                            rasterize=True)
         
         # Add labels for each genre
         for feature_idx in range(len(W)):
@@ -779,9 +780,9 @@ class MovieLensDataset_Optimized:
             os.makedirs(f"{save_dir}/pngs", exist_ok=True)
             
             fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf", 
-                    format="pdf", dpi=300, bbox_inches='tight')
+                    format="pdf", dpi=100, bbox_inches='tight')
             fig.savefig(f"{save_dir}/pngs/{save_name}.png", 
-                    format="png", dpi=300, bbox_inches='tight')
+                    format="png", dpi=100, bbox_inches='tight')
             if verbose:
                 print(f"Saved plots to {save_dir}")
         
@@ -825,7 +826,8 @@ class MovieLensDataset_Optimized:
                             alpha=0.7,
                             edgecolors='black',
                             linewidth=1.5,
-                            zorder=3)
+                            zorder=3,
+                            rasterize=True)
         
         for feature_idx in range(len(W)):
             genre_name = feature_reverse_map[feature_idx]
@@ -878,9 +880,9 @@ class MovieLensDataset_Optimized:
             os.makedirs(f"{save_dir}/pngs", exist_ok=True)
             
             fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf",
-                    format="pdf", dpi=300, bbox_inches='tight')
+                    format="pdf", dpi=100, bbox_inches='tight')
             fig.savefig(f"{save_dir}/pngs/{save_name}.png",
-                    format="png", dpi=300, bbox_inches='tight')
+                    format="png", dpi=100, bbox_inches='tight')
             if verbose:
                 print(f"Saved clustered plots to {save_dir}")
         
@@ -961,9 +963,9 @@ class MovieLensDataset_Optimized:
             os.makedirs(f"{save_dir}/pngs", exist_ok=True)
             
             fig.savefig(f"{save_dir}/pdfs/{save_name}.pdf",
-                    format="pdf", dpi=300, bbox_inches='tight')
+                    format="pdf", dpi=100, bbox_inches='tight')
             fig.savefig(f"{save_dir}/pngs/{save_name}.png",
-                    format="png", dpi=300, bbox_inches='tight')
+                    format="png", dpi=100, bbox_inches='tight')
             if verbose:
                 print(f"Saved cosine similarity plot to {save_dir}")
         
