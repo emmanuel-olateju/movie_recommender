@@ -928,6 +928,7 @@ class MovieLensDataset_Optimized:
         # Compute cosine similarity matrix
         from sklearn.metrics.pairwise import cosine_similarity
         cos_sim = cosine_similarity(W)
+        cos_sim = (cos_sim - cos_sim.mean()) / cos_sim.std()
         
         # Create figure
         fig, ax = plt.subplots(figsize=(12, 10))
