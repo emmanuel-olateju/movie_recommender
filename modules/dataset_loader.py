@@ -10,7 +10,7 @@ import seaborn as sns
 from itertools import product
 from tqdm import tqdm
 import math
- from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity
 
 from IPython.display import clear_output
 
