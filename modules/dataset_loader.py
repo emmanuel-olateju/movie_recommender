@@ -2,12 +2,15 @@ import os
 from tqdm import tqdm
 import random
 import numpy as np
+import pandas as pd
 import gc
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import seaborn as sns
 from itertools import product
 from tqdm import tqdm
 import math
+ from sklearn.metrics.pairwise import cosine_similarity
 
 from IPython.display import clear_output
 
@@ -906,7 +909,7 @@ class MovieLensDataset_Optimized:
         return fig
 
 
-    def plot_cosine_similarity_heatmap(self, save_dir=None, save_name='genre_cosine_similarity', verbose=False):
+    def plot_cosine_similarity_heatmap(self, save_dir=None, save_name='genre_cosine_similarity', z_score=False, verbose=False):
         """
         Plot heatmap of pairwise cosine similarities between genre embeddings.
         
@@ -926,36 +929,19 @@ class MovieLensDataset_Optimized:
             return
         
         # Compute cosine similarity matrix
-        from sklearn.metrics.pairwise import cosine_similarity
         cos_sim = cosine_similarity(W)
-        cos_sim = (cos_sim - cos_sim.mean()) / cos_sim.std()
+        if z_score:
+            cos_sim = (cos_sim - cos_sim.mean()) / cos_sim.std()
         
-        # Create figure
-        fig, ax = plt.subplots(figsize=(12, 10))
-        
-        # Plot heatmap
-        im = ax.imshow(cos_sim, cmap='RdYlGn', aspect='auto', vmin=-1, vmax=1)
-        
-        # Add genre labels
+        fig = plt.figure(figsize=(12, 10))
         genre_names = [feature_reverse_map[i] for i in range(len(W))]
-        ax.set_xticks(range(len(W)))
-        ax.set_yticks(range(len(W)))
-        ax.set_xticklabels(genre_names, rotation=90, fontsize=9)
-        ax.set_yticklabels(genre_names, fontsize=9)
-        
-        # Add colorbar
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('Cosine Similarity', fontsize=11, fontweight='bold')
-        
-        # Add grid for readability
-        ax.set_xticks(np.arange(len(W)) - 0.5, minor=True)
-        ax.set_yticks(np.arange(len(W)) - 0.5, minor=True)
-        ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5, alpha=0.3)
-        
-        ax.set_title('Pairwise Cosine Similarity Between Genres', 
-                    fontsize=13, fontweight='bold', pad=15)
-        
-        plt.tight_layout()
+        cos_sim_df = pd.DataFrame(cos_sim, index=genre_names, columns=genre_names)
+        sns.clustermap(
+            cos_sim_df,
+            cmap='RdBu_r',
+            figsize=(12, 10)
+        )
+        fig.tight_layout()
         
         # Save if directory provided
         if save_dir is not None:
@@ -1028,7 +1014,6 @@ class MovieLensDataset_Optimized:
             return None, None, None
         
         # Compute cosine similarity
-        from sklearn.metrics.pairwise import cosine_similarity
         cos_sim = cosine_similarity(W)
         
         genre_names = [feature_reverse_map[i] for i in range(len(W))]
