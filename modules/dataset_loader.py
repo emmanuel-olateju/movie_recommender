@@ -940,7 +940,6 @@ class MovieLensDataset_Optimized:
             cmap='RdBu_r',
             figsize=(12, 10)
         )
-        fig.tight_layout()
         
         # Save if directory provided
         if save_dir is not None:
