@@ -933,10 +933,9 @@ class MovieLensDataset_Optimized:
         if z_score:
             cos_sim = (cos_sim - cos_sim.mean()) / cos_sim.std()
         
-        fig = plt.figure(figsize=(12, 10))
         genre_names = [feature_reverse_map[i] for i in range(len(W))]
         cos_sim_df = pd.DataFrame(cos_sim, index=genre_names, columns=genre_names)
-        sns.clustermap(
+        fig = sns.clustermap(
             cos_sim_df,
             cmap='RdBu_r',
             figsize=(12, 10)
