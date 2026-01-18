@@ -1,0 +1,53 @@
+baseline: v0.1, v0.1.1
+description: 'Biases + update: hyperparameter grid search on 32M dataset: Vary Tau
+  in Grid-Search'
+name: v1.0
+parameters:
+  Grid_Search:
+    Parameter_Space:
+      biases_alone:
+      - false
+      eta:
+      - 0.0
+      eval_inter:
+      - 5
+      gamma:
+      - 0.0
+      lambda_:
+      - 1.0
+      latent_dim:
+      - 10
+      n_iter:
+      - 50
+      tau:
+      - 0.25
+      - 0.5
+      - 1.0
+      - 2.0
+      - 4.0
+      test_size:
+      - 0.1
+      use_features:
+      - false
+      verbose:
+      - true
+  Hyperparameters:
+    Epochs: 50
+    Evaluation-Interval: 5
+    best_params:
+      biases_alone: false
+      eta: 0.0
+      eval_inter: 5
+      gamma: 0.0
+      lambda_: 1.0
+      latent_dim: 10
+      n_iter: 50
+      tau: 0.25
+      test_size: 0.1
+      use_features: false
+      verbose: true
+    only_biases: false
+    use_genre_features: false
+  Performance:
+    NLL: 840486.0531059114
+    RMSE: 0.7500488004588862

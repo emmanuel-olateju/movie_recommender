@@ -1,0 +1,20 @@
+baseline: v1.0
+description: '''Biases + Latent Factors + Features Update: Train with parameters from   Grid
+  Search of v1.0, reduce latent_dim (K) to 2''''Biases + Latent Factors + Features
+  Update: Train with parameters from   Grid Search of v1.0; reduce laent_dim to 2'
+name: v2.1
+parameters:
+  Hyperparameters:
+    Batch-Size: 30000
+    eta: 0.25
+    eval_inter: 5
+    gamma: 0.0
+    lambda_: 1.0
+    latent_dim: 2
+    n_iter: 50
+    only_biases: false
+    tau: 0.25
+    use_genre_features: true
+  Performance:
+    test_NLL: 46318.506296413245
+    test_RMSE: 0.7686848570268242

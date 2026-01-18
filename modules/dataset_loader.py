@@ -4,7 +4,6 @@ import random
 import numpy as np
 import gc
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 
 colors = {
     'isolated': '#2E86AB',      # Blue
@@ -643,7 +642,7 @@ class MovieLensDataset_Optimized:
         y_coords = W[:, 1]
         
         # Plot points
-        scatter = ax.scatter(x_coords, y_coords, 
+        _ = ax.scatter(x_coords, y_coords, 
                             s=150, 
                             c=range(len(W)), 
                             cmap='tab20',
@@ -740,7 +739,7 @@ class MovieLensDataset_Optimized:
         x_coords = W[:, 0]
         y_coords = W[:, 1]
         
-        scatter1 = ax1.scatter(x_coords, y_coords,
+        _ = ax1.scatter(x_coords, y_coords,
                             s=150,
                             c=range(len(W)),
                             cmap='tab20',

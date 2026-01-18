@@ -1,0 +1,19 @@
+baseline: v1.0
+description: 'Biases + Latent Factors + Features Update: Train with parameters from
+  Grid Search of v1.0,'
+name: v1.1
+parameters:
+  Hyperparameters:
+    Batch-Size: 30000
+    eta: 0.25
+    eval_inter: 5
+    gamma: 0.0
+    lambda_: 1.0
+    latent_dim: 10
+    n_iter: 50
+    only_biases: false
+    tau: 0.25
+    use_genre_features: false
+  Performance:
+    test_NLL: 44109.11031150022
+    test_RMSE: 0.7468810044256644

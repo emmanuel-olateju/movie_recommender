@@ -1,0 +1,19 @@
+baseline: v0.1, v0.1.1
+description: 'Biases update: Train with best parameters from grid search and save
+  artifacts'
+name: v0.2
+parameters:
+  Hyperparameters:
+    Epochs: 50
+    Evaluation-Interval: 5
+    biases_regularizer_gamma: 0.0
+    embeddings_regularizer_eta: 0.0
+    embeddings_regularizer_tau: 0.5
+    only_biases: true
+    residuals_regularizer_lambda: 1.0
+    use_genre_features: false
+  Hyperparamters:
+    Batch-Size: 30000
+  Performance:
+    test_NLL: 50832.76312313557
+    test_RMSE: 0.8037820495961411
